@@ -173,10 +173,10 @@ async def on_message(message):
     # Komenda !geek do wyświetlania help deska
     if message.content.startswith('!geek'):
         message_content = "Dostępne komendy:\n" \
-                          "`!faceit [nick] - Statystyki profilu [nick]\n" \
-                          "`!discordfaceit - Statystyki discorda na faceicie\n" \
-                          "`!masny - Tabela masnego\n" \
-                          "`!masny [1-5] - Zajęte miejsce w tabeli przez masnego"
+                          "`!faceit [nick]` - Statystyki profilu [nick]\n" \
+                          "`!discordfaceit` - Statystyki discorda na faceicie\n" \
+                          "`!masny` - Tabela masnego\n" \
+                          "`!masny [1-5]` - Zajęte miejsce w tabeli przez masnego"
         await message.channel.send(message_content)
 
     # Komenda !discordfaceit do wyświetlania statystyk
@@ -188,7 +188,7 @@ async def on_message(message):
     if message.content.startswith('!faceit'):
         parts = message.content.split()
         if len(parts) < 2:
-            await message.channel.send('Podaj nick gracza Faceit, np. `!faceit Nick.')
+            await message.channel.send('Podaj nick gracza Faceit, np. `!faceit Nick`')
             return
 
         nickname = parts[1]
@@ -328,7 +328,7 @@ async def on_message(message):
             scoreboard += f"\nŚrednie miejsce zajmowane przez masnego: **{avg_position:.2f}**\n"
 
             await message.channel.send(
-                scoreboard + "Aby dopisać miejsce masnego w tabeli wpisz `!masny [miejsce]")
+                scoreboard + "Aby dopisać miejsce masnego w tabeli wpisz `!masny [miejsce]`")
 
 
 # Uruchomienie bota
