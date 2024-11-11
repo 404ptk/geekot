@@ -2,6 +2,7 @@ import discord
 import requests
 import os
 
+
 # Funkcja do wczytania tokena z pliku
 def load_token(filename):
     try:
@@ -13,6 +14,7 @@ def load_token(filename):
     except Exception as e:
         print(f"Wystąpił błąd podczas wczytywania tokena z pliku {filename}: {e}")
         return None
+
 
 # Wczytanie tokenów
 DISCORD_TOKEN = load_token('discord_token.txt')
@@ -35,11 +37,13 @@ masny_counter = {
     "5": 0
 }
 
+
 # Funkcja do zapisywania danych do pliku
 def save_masny_data():
     with open(MASNY_FILE, "w") as file:
         for key, count in masny_counter.items():
             file.write(f"{key} {count}\n")
+
 
 # Funkcja do wczytywania danych z pliku
 def load_masny_data():
@@ -56,6 +60,7 @@ def load_masny_data():
                     masny_counter[key] = int(count)
             except ValueError:
                 print(f"Błąd przy wczytywaniu linii: {line}")
+
 
 # Wczytanie danych przy starcie bota
 load_masny_data()
@@ -75,6 +80,7 @@ def get_faceit_player_data(nickname):
     else:
         return None
 
+
 # Funkcja do pobierania ostatnich meczów gracza
 def get_faceit_player_matches(player_id):
     game_id = "cs2"
@@ -88,6 +94,7 @@ def get_faceit_player_matches(player_id):
     else:
         print("Błąd połączenia z Faceit API:", response.status_code)
         return None
+
 
 # Funkcja do pobierania statystyk dla graczy w Discordzie
 async def get_discordfaceit_stats():
@@ -114,11 +121,48 @@ async def get_discordfaceit_stats():
 
     return message_content
 
+
 # Obsługa zdarzenia - gdy bot jest gotowy
 @client.event
 async def on_ready():
     print(f'{client.user} has connected to Discord!')
     await client.change_presence(activity=discord.Game(name="!geek - Jestem geekiem"))
+
+
+# Funkcja do wyświetlania ostatniego meczu gracza `-Masny-`
+async def display_last_match_stats():
+    nickname = "-Masny-"
+    player_data = get_faceit_player_data(nickname)
+
+    if player_data is None:
+        return f'Nie znaleziono gracza o nicku {nickname} na Faceit.'
+
+    player_id = player_data['player_id']
+    player_nickname = player_data['nickname']
+    matches = get_faceit_player_matches(player_id)
+
+    if not matches:
+        return f'Nie udało się pobrać danych o meczach gracza {player_nickname}.'
+
+    # Tylko pierwszy (ostatni) mecz z listy
+    last_match = matches[0]
+
+    # Szczegóły meczu
+    map_name = last_match.get('stats', {}).get('Map', 'Nieznana').replace('de_', '')
+    result = 'W' if last_match.get('stats', {}).get('Result') == '1' else 'L'
+    kills = int(last_match.get('stats', {}).get('Kills', 0))
+    deaths = int(last_match.get('stats', {}).get('Deaths', 0))
+    assists = int(last_match.get('stats', {}).get('Assists', 0))
+    hs = int(last_match.get('stats', {}).get('Headshots %', 0))
+
+    # Formatowanie odpowiedzi
+    #last_match_stats = f'**Ostatni mecz gracza {player_nickname}:**\n'
+    last_match_stats = f'**Mapa**: {map_name}\n'
+    last_match_stats += f'**Wynik**: {result}\n'
+    last_match_stats += f'**K/D/A**: {kills}/{deaths}/{assists}\n'
+    last_match_stats += f'**HS%**: {hs}%\n'
+
+    return last_match_stats
 
 # Obsługa wiadomości użytkowników
 @client.event
@@ -129,10 +173,10 @@ async def on_message(message):
     # Komenda !geek do wyświetlania help deska
     if message.content.startswith('!geek'):
         message_content = "Dostępne komendy:\n" \
-                          "``!faceit [nick]`` - Statystyki profilu [nick]\n" \
-                          "``!discordfaceit`` - Statystyki discorda na faceicie\n" \
-                          "``!masny`` - Tabela masnego\n" \
-                          "``!masny [1-5]`` - Zajęte miejsce w tabeli przez masnego"
+                          "`!faceit [nick] - Statystyki profilu [nick]\n" \
+                          "`!discordfaceit - Statystyki discorda na faceicie\n" \
+                          "`!masny - Tabela masnego\n" \
+                          "`!masny [1-5] - Zajęte miejsce w tabeli przez masnego"
         await message.channel.send(message_content)
 
     # Komenda !discordfaceit do wyświetlania statystyk
@@ -144,7 +188,7 @@ async def on_message(message):
     if message.content.startswith('!faceit'):
         parts = message.content.split()
         if len(parts) < 2:
-            await message.channel.send('Podaj nick gracza Faceit, np. ``!faceit Nick.``')
+            await message.channel.send('Podaj nick gracza Faceit, np. `!faceit Nick.')
             return
 
         nickname = parts[1]
@@ -215,16 +259,31 @@ async def on_message(message):
 
         await message.channel.send(message_content)
 
-    # Obsługa komend !masny
+    # Słownik z linkami do zdjęć w zależności od zajętego miejsca
+    image_links = {
+        "1": "https://cdn.discordapp.com/attachments/901212623205457951/1204851299137486970/IMG_20220223_175042.png?ex=6729b676&is=672864f6&hm=a2d7ff619ba8be39093b7b08483faa48bce8c97c3636d7c296634e72afb85014&",
+        "2": "https://media.discordapp.net/attachments/901212623205457951/919163421923090432/unknown.png?ex=6729e9a5&is=67289825&hm=cf80bd4473d875a16231bf674eb373fa3a36cebecfdc8f7f33382593a0bfe0a1&=&format=webp&quality=lossless&width=520&height=350",
+        "3": "https://media.discordapp.net/attachments/901212623205457951/911224093003632670/20211119_125910.jpg?ex=672a0891&is=6728b711&hm=d9b15578313b97246e9db10031b80a3f65d381dd938141607d72769cda4de2cd&=&format=webp&width=451&height=601",
+        "4": "https://media.discordapp.net/attachments/901212623205457951/921415958092976208/20211217_155801.jpg?ex=672a327b&is=6728e0fb&hm=1e107e856187455393dc4d5d3f0bd7e8f4c9b0a889fcd65412d74612b092b32f&=&format=webp&width=450&height=601",
+        "5": "https://cdn.discordapp.com/attachments/901212623205457951/1008028338092253254/20220813_170414.jpg?ex=672a340c&is=6728e28c&hm=4b9c0b01d8afad9a5f03f96ffe26c77a4f2b93e819c8bd11ff32a06335b4d70a&"
+    }
+
     if message.content.startswith('!masny'):
         parts = message.content.split()
-
-        # Obsługa komendy w formacie "!masny X", gdzie X to liczba od 1 do 5 (dodanie miejsca)
+        # Obsługa komendy w formacie "!masny X", gdzie X to liczba od 1 do 5
         if len(parts) == 2 and parts[1] in masny_counter:
             masny_counter[parts[1]] += 1
             save_masny_data()  # Zapisanie stanu po każdej zmianie
+
+            # Pobranie tabeli z ostatniego meczu -Masny-
+            last_match_stats = await display_last_match_stats()
+
+            # Wybór odpowiedniego zdjęcia na podstawie wybranego miejsca
+            image_url = image_links.get(parts[1],
+                                        "https://cdn.discordapp.com/avatars/606785554918539275/f9528561e91c8c742e6b45ddcf9dd82c.png?size=1024")
+
             await message.channel.send(
-                f'Masny zajął {parts[1]} miejsce.\nhttps://cdn.discordapp.com/avatars/606785554918539275/f9528561e91c8c742e6b45ddcf9dd82c.png?size=1024')
+                f'Masny zajął {parts[1]} miejsce.\n{image_url}\n\n{last_match_stats}')
 
         # Obsługa komendy w formacie "!masny -X", gdzie X to liczba od 1 do 5 (usunięcie miejsca)
         elif len(parts) == 2 and parts[1].startswith('-') and parts[1][1:] in masny_counter:
@@ -240,7 +299,15 @@ async def on_message(message):
         elif len(parts) == 1:
             total_counts = sum(masny_counter.values())
 
-            # Wyznaczanie najczęściej używanej komendy
+            # Wyznaczanie średniego miejsca
+            if total_counts > 0:
+                # Suma (miejsce * liczba wystąpień) dla każdego miejsca
+                weighted_sum = sum(int(key) * count for key, count in masny_counter.items())
+                avg_position = weighted_sum / total_counts
+            else:
+                avg_position = 0
+
+            # Wyznaczanie najczęściej zajmowanego miejsca
             if total_counts > 0:
                 most_common = max(masny_counter, key=masny_counter.get)
                 most_common_count = masny_counter[most_common]
@@ -257,12 +324,11 @@ async def on_message(message):
                 percent = (count / total_counts) * 100 if total_counts > 0 else 0
                 scoreboard += f"**{key} miejsce** - {count} razy *({percent:.2f}%)*\n"
 
-            # Średnia liczba użyć i najczęściej wybierana komenda z procentem
-            average = total_counts / len(masny_counter) if len(masny_counter) > 0 else 0
-            scoreboard += f"\nMasny najczęściej jest **{most_common}** w tabeli (*{most_common_count} razy - {most_common_percent:.2f}%)*\n"
+            # Dodanie informacji o średnim miejscu i najczęściej zajmowanym miejscu
+            scoreboard += f"\nŚrednie miejsce zajmowane przez masnego: **{avg_position:.2f}**\n"
 
             await message.channel.send(
-                scoreboard + "Aby dopisać miejsce masnego w tabeli wpisz ``!masny [miejsce]``")
+                scoreboard + "Aby dopisać miejsce masnego w tabeli wpisz `!masny [miejsce]")
 
 
 # Uruchomienie bota
