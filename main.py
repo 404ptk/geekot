@@ -1,3 +1,5 @@
+import random
+
 import discord
 import requests
 import os
@@ -65,9 +67,33 @@ def load_masny_data():
 # Wczytanie danych przy starcie bota
 load_masny_data()
 
+# Inicjalizacja listy wymówek
+wymowki = [
+]
+
+# Dodajemy funkcję do zapisywania wymówek do pliku
+WYMOWKI_FILE = "wymowki.txt"
+
+def save_wymowki():
+    with open(WYMOWKI_FILE, "w") as file:
+        for line in wymowki:
+            file.write(line + "\n")
+
+
+# Dodajemy funkcję do wczytywania wymówek z pliku
+def load_wymowki():
+    if os.path.exists(WYMOWKI_FILE):
+        with open(WYMOWKI_FILE, "r") as file:
+            for line in file:
+                wymowki.append(line.strip())
+
+
+# Wczytujemy wymówki przy starcie bota
+load_wymowki()
+
 # Lista pseudonimów graczy
 player_nicknames = ['utopiasz', 'radzioswir', 'PhesterM9', '-Masny-',
-                    'vazil1103', 'Kvzia', 'Kajetov', 'nawzea', 'BEJLI', 'MlodyHubii']
+                    '1312mateuk0', 'Kvzia', 'Kajetov', 'nawzea', 'BEJLI', 'MlodyHubii']
 
 
 # Funkcja do pobierania danych o użytkowniku z Faceit
@@ -178,6 +204,22 @@ async def on_message(message):
                           "`!masny` - Tabela masnego\n" \
                           "`!masny [1-5]` - Zajęte miejsce w tabeli przez masnego"
         await message.channel.send(message_content)
+
+    # Komenda !losujwymowke
+    if message.content.startswith('!losujwymowke'):
+        wymowka = random.choice(wymowki)  # Losowy wybór wymówki z listy
+        await message.channel.send(f"Wymówka masnego: {wymowka}")
+
+    # Komenda !dodajwymowke <tekst>
+    if message.content.startswith('!dodajwymowke'):
+        parts = message.content.split(" ", 1)
+        if len(parts) < 2:
+            await message.channel.send("Podaj tekst wymówki, np. `!dodajwymowke Zgubiłem klucz do serwera.`")
+        else:
+            nowa_wymowka = parts[1].strip()
+            wymowki.append(nowa_wymowka)  # Dodanie nowej wymówki do listy
+            save_wymowki()  # Zapisanie nowej wymówki do pliku
+            await message.channel.send(f"Dodano nową wymówkę: {nowa_wymowka}")
 
     # Komenda !discordfaceit do wyświetlania statystyk
     if message.content.startswith('!discordfaceit'):

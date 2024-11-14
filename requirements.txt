@@ -13,3 +13,4 @@ propcache==0.2.0
 requests==2.32.3
 urllib3==2.2.3
 yarl==1.17.1
+random2==1.0.2
