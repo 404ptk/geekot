@@ -6,11 +6,5 @@
   <ul>
     <li>Twój klucz API Faceit</li>
     <li>Twój klucz API Twitch</li>
-    <li>Opcjonalnie:</li>
-    <li>
-      <li>challenges.txt</li>
-      <li>masny.txt</li>
-      <li>wymowki.txt</li>
-    </li>
   </ul>
 </p>
