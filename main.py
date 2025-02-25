@@ -323,6 +323,7 @@ async def on_message(message):
 
         embed.add_field(name="🎭 **Wymówki Masnego**", value="`!dodajwymowke` - Dodawanie wymówek\n"
                                                             "`!losujwymowke` - Losowanie wymówek\n"
+                                                            "`!usunwymowke [nr]` - Usuń wymówke z listy\n"
                                                             "`!wymowki` - Lista wymówek", inline=False)
 
         embed.add_field(name="🚀 **Spawn Masnego**", value="`!spawn` - Spawn Masnego\n"
@@ -335,6 +336,7 @@ async def on_message(message):
         embed.add_field(name="🔥 **Challenges CS2**",
                         value="`!wyzwanie` - Losuje wyzwanie z listy challengów\n"
                               "`!dodajwyzwanie` - Dodaj wyzwanie do listy challengów\n"
+                              "`!usunwyzwanie [nr]` - Usuń wyzwanie z listy\n"
                               "`!wyzwania` - Lista dostępnych challengów", inline=False)
 
         embed.set_footer(text="Geekot - Jestem geekiem, największym geekiem 🎮")
@@ -358,25 +360,54 @@ async def on_message(message):
             save_wymowki()  # Zapisanie nowej wymówki do pliku
             await message.channel.send(f"Dodano nową wymówkę: {nowa_wymowka}")
 
-    # Nowa komenda do wyświetlania wszystkich zapisanych wymówek
-    if message.content.startswith('!wymowki'):
-        if not wymowki:
-            embed = discord.Embed(
-                title="🎭 Lista wymówek Masnego",
-                description="Brak zapisanych wymówek. Dodaj jedną za pomocą `!dodajwymowke`!",
-                color=discord.Color.red()
-            )
-            embed.set_footer(text="Zapisz wymówki masnego!")
-            await message.channel.send(embed=embed)
-        else:
-            wymowki_list = "\n".join(f"{i + 1}. {wymowka}" for i, wymowka in enumerate(wymowki))
-            embed = discord.Embed(
-                title="🎭 Lista wymówek Masnego",
-                description=f"Oto wszystkie zapisane wymówki:\n{wymowki_list}",
-                color=discord.Color.purple()
-            )
-            embed.set_footer(text=f"Liczba wymówek: {len(wymowki)} | Losuj jedną za pomocą `!losujwymowke`")
-            await message.channel.send(embed=embed)
+    # Komenda !wymowki i !usunwymowke - wyświetlanie i usuwanie wymówek
+    if message.content.startswith('!wymowki') or message.content.startswith('!usunwymowke'):
+        if message.content.startswith('!usunwymowke'):
+            parts = message.content.split()
+            if len(parts) < 2 or not parts[1].isdigit():
+                embed = discord.Embed(
+                    title="⚠️ Błąd",
+                    description="Podaj numer wymówki do usunięcia, np. `!usunwymowke 2`",
+                    color=discord.Color.red()
+                )
+                await message.channel.send(embed=embed)
+            else:
+                index = int(parts[1]) - 1  # Konwersja na indeks (numeracja od 1)
+                if 0 <= index < len(wymowki):
+                    removed_wymowka = wymowki.pop(index)  # Usunięcie wymówki
+                    save_wymowki()  # Aktualizacja pliku
+                    embed = discord.Embed(
+                        title="✅ Wymówka usunięta",
+                        description=f"Usunięto: **{removed_wymowka}**",
+                        color=discord.Color.green()
+                    )
+                    embed.set_footer(text="Sprawdź listę za pomocą `!wymowki`")
+                    await message.channel.send(embed=embed)
+                else:
+                    embed = discord.Embed(
+                        title="⚠️ Błąd",
+                        description=f"Nieprawidłowy numer. Wpisz numer od 1 do {len(wymowki)}",
+                        color=discord.Color.red()
+                    )
+                    await message.channel.send(embed=embed)
+        else:  # !wymowki
+            if not wymowki:
+                embed = discord.Embed(
+                    title="🎭 Lista wymówek Masnego",
+                    description="Brak zapisanych wymówek. Dodaj jedną za pomocą `!dodajwymowke`!",
+                    color=discord.Color.red()
+                )
+                embed.set_footer(text="Zapisz wymówki Masnego!")
+                await message.channel.send(embed=embed)
+            else:
+                wymowki_list = "\n".join(f"{i + 1}. {wymowka}" for i, wymowka in enumerate(wymowki))
+                embed = discord.Embed(
+                    title="🎭 Lista wymówek Masnego",
+                    description=f"Oto wszystkie zapisane wymówki:\n{wymowki_list}",
+                    color=discord.Color.purple()
+                )
+                embed.set_footer(text=f"Liczba wymówek: {len(wymowki)} | Losuj jedną za pomocą `!losujwymowke`")
+                await message.channel.send(embed=embed)
 
     # Komenda !instant
     if message.content.startswith("!instant"):
@@ -656,19 +687,54 @@ async def on_message(message):
         )
         await message.channel.send(embed=embed)
 
-    # Komenda !challenge - losowanie wyzwania
-    if message.content.startswith('!wyzwanie'):
-        if not challenges:
-            await message.channel.send("Brak zapisanych wyzwań. Dodaj jedno za pomocą `!dodajwyzwanie`!")
-        else:
-            challenge = random.choice(challenges)
-            embed = discord.Embed(
-                title="🎯 Twoje wyzwanie CS2",
-                description=f"**{challenge}**",
-                color=discord.Color.green()
-            )
-            embed.set_footer(text="Powodzenia! Dodaj własne wyzwanie za pomocą `!dodajwyzwanie`")
-            await message.channel.send(embed=embed)
+    # Komenda !wyzwania i !usunwyzwanie - wyświetlanie i usuwanie wyzwań
+    if message.content.startswith('!wyzwanie') or message.content.startswith('!usunwyzwanie'):
+        if message.content.startswith('!usunwyzwanie'):
+            parts = message.content.split()
+            if len(parts) < 2 or not parts[1].isdigit():
+                embed = discord.Embed(
+                    title="⚠️ Błąd",
+                    description="Podaj numer wyzwania do usunięcia, np. `!usunwyzwanie 2`",
+                    color=discord.Color.red()
+                )
+                await message.channel.send(embed=embed)
+            else:
+                index = int(parts[1]) - 1  # Konwersja na indeks (numeracja od 1)
+                if 0 <= index < len(challenges):
+                    removed_challenge = challenges.pop(index)  # Usunięcie wyzwania
+                    save_challenges()  # Aktualizacja pliku
+                    embed = discord.Embed(
+                        title="✅ Wyzwanie usunięte",
+                        description=f"Usunięto: **{removed_challenge}**",
+                        color=discord.Color.green()
+                    )
+                    embed.set_footer(text="Sprawdź listę za pomocą `!wyzwania`")
+                    await message.channel.send(embed=embed)
+                else:
+                    embed = discord.Embed(
+                        title="⚠️ Błąd",
+                        description=f"Nieprawidłowy numer. Wpisz numer od 1 do {len(challenges)}",
+                        color=discord.Color.red()
+                    )
+                    await message.channel.send(embed=embed)
+        else:  # !wyzwania
+            if not challenges:
+                embed = discord.Embed(
+                    title="📋 Lista wyzwań CS2",
+                    description="Brak zapisanych wyzwań. Dodaj jedno za pomocą `!dodajwyzwanie`!",
+                    color=discord.Color.red()
+                )
+                embed.set_footer(text="Stwórz swoje wyzwanie!")
+                await message.channel.send(embed=embed)
+            else:
+                challenge = random.choice(challenges)
+                embed = discord.Embed(
+                    title="🎯 Twoje wyzwanie CS2",
+                    description=f"**{challenge}**",
+                    color=discord.Color.green()
+                )
+                embed.set_footer(text="Dodaj własne wyzwanie za pomocą `!dodajwyzwanie`\nPowodzenia!")
+                await message.channel.send(embed=embed)
 
     # Komenda !addchallenge - dodawanie nowego wyzwania
     if message.content.startswith('!dodajwyzwanie'):
