@@ -95,9 +95,41 @@ def load_wymowki():
 # Wczytujemy wymówki przy starcie bota
 load_wymowki()
 
+# Inicjalizacja listy wyzwań
+challenges = []
+
+# Plik do przechowywania wyzwań
+CHALLENGES_FILE = "challenges.txt"
+
+# Funkcja do zapisywania wyzwań do pliku
+def save_challenges():
+    with open(CHALLENGES_FILE, "w", encoding="utf-8") as file:
+        for challenge in challenges:
+            file.write(challenge + "\n")
+
+# Funkcja do wczytywania wyzwań z pliku
+def load_challenges():
+    if os.path.exists(CHALLENGES_FILE):
+        with open(CHALLENGES_FILE, "r", encoding="utf-8") as file:
+            for line in file:
+                challenges.append(line.strip())
+    else:
+        # Domyślne wyzwania na start
+        default_challenges = [
+            "Zagraj rundę tylko z Deagle",
+            "Wygraj mecz bez kupowania granatów",
+            "Użyj tylko noża w jednej rundzie",
+            "Zabij 3 przeciwników z AWP w jednym meczu"
+        ]
+        challenges.extend(default_challenges)
+        save_challenges()
+
+# Wczytanie wyzwań przy starcie bota
+load_challenges()
+
 # Lista pseudonimów graczy
 player_nicknames = ['utopiasz', 'radzioswir', 'PhesterM9', '-Masny-',
-                    '-mateuko', 'Kvzia', 'Kajetov', 'nawzea', 'BEJLI', 'MlodyHubii']
+                    '-mateuko', 'Kvzia', 'Kajetov', 'MlodyHubii']
 
 
 # Funkcja do pobierania danych o użytkowniku z Faceit
@@ -141,15 +173,31 @@ async def get_discordfaceit_stats():
                 'elo': player_elo if isinstance(player_elo, int) else 0
             })
 
-    # Sortowanie listy według ELO i LVL od najwyższego do najmniejszego
+    # Sortowanie według ELO i poziomu
     player_stats.sort(key=lambda x: (x['elo'], x['level']), reverse=True)
 
-    # Generowanie wiadomości z wynikami
-    message_content = "**Statystyki **\n\n"
-    for player in player_stats:
-        message_content += f"**{player['nickname']}** - ELO: {player['elo']}, LVL: {player['level']}\n"
+    # Tworzenie embeda
+    embed = discord.Embed(
+        title="📊 **Ranking Faceit**",
+        description="🔹 Lista graczy uszeregowana według ELO i poziomu CS2.",
+        color=discord.Color.blue()
+    )
 
-    return message_content
+    # Dodanie graczy do embeda
+    for index, player in enumerate(player_stats):
+        rank_emoji = "🥇" if index == 0 else "🥈" if index == 1 else "🥉" if index == 2 else "🎮"
+        flag = "🇺🇦" if player['nickname'] == "PhesterM9" else "🇵🇱"
+
+        embed.add_field(
+            name=f"{rank_emoji} **{player['nickname']}** {flag}",
+            value=f"**ELO**: {player['elo']} | **LVL**: {player['level']}",
+            inline=False
+        )
+
+    # Stopka i dodatkowe info
+    embed.set_footer(text="📅 Ranking generowany automatycznie")
+
+    return embed
 
 # Obsługa zdarzenia - gdy bot jest gotowy
 @client.event
@@ -277,12 +325,17 @@ async def on_message(message):
                                                             "`!losujwymowke` - Losowanie wymówek\n"
                                                             "`!wymowki` - Lista wymówek", inline=False)
 
-        embed.add_field(name="🎯 **CS2 Instanty**", value="`!instant` - Lista dostępnych instantów (CS2)", inline=False)
-
         embed.add_field(name="🚀 **Spawn Masnego**", value="`!spawn` - Spawn Masnego\n"
                                                           "`!spawn [godzina]` - Można wpisać np. `!spawn 16`",
                         inline=False)
         embed.add_field(name="🎥 **Stan streamera**", value="`!stan [H2P_Gucio]` - Pokazuje ostatnią/aktualną klatkę ze streama", inline=False)
+
+        embed.add_field(name="🎯 **CS2 Instanty**", value="`!instant` - Lista dostępnych instantów (CS2)", inline=False)
+
+        embed.add_field(name="🔥 **Challenges CS2**",
+                        value="`!wyzwanie` - Losuje wyzwanie z listy challengów\n"
+                              "`!dodajwyzwanie` - Dodaj wyzwanie do listy challengów\n"
+                              "`!wyzwania` - Lista dostępnych challengów", inline=False)
 
         embed.set_footer(text="Geekot - Jestem geekiem, największym geekiem 🎮")
 
@@ -308,10 +361,22 @@ async def on_message(message):
     # Nowa komenda do wyświetlania wszystkich zapisanych wymówek
     if message.content.startswith('!wymowki'):
         if not wymowki:
-            await message.channel.send("Brak zapisanych wymówek.")
+            embed = discord.Embed(
+                title="🎭 Lista wymówek Masnego",
+                description="Brak zapisanych wymówek. Dodaj jedną za pomocą `!dodajwymowke`!",
+                color=discord.Color.red()
+            )
+            embed.set_footer(text="Zapisz wymówki masnego!")
+            await message.channel.send(embed=embed)
         else:
-            wymowki_list = "\n".join(f"- {wymowka}" for wymowka in wymowki)
-            await message.channel.send(f"Lista zapisanych wymówek:\n{wymowki_list}")
+            wymowki_list = "\n".join(f"{i + 1}. {wymowka}" for i, wymowka in enumerate(wymowki))
+            embed = discord.Embed(
+                title="🎭 Lista wymówek Masnego",
+                description=f"Oto wszystkie zapisane wymówki:\n{wymowki_list}",
+                color=discord.Color.purple()
+            )
+            embed.set_footer(text=f"Liczba wymówek: {len(wymowki)} | Losuj jedną za pomocą `!losujwymowke`")
+            await message.channel.send(embed=embed)
 
     # Komenda !instant
     if message.content.startswith("!instant"):
@@ -343,8 +408,8 @@ async def on_message(message):
 
     # Komenda !discordfaceit do wyświetlania statystyk
     if message.content.startswith('!discordfaceit'):
-        message_content = await get_discordfaceit_stats()
-        await message.channel.send(message_content)
+        embed = await get_discordfaceit_stats()
+        await message.channel.send(embed=embed)
 
     if message.content.startswith('!spawn'):
         user_id = 606785554918539275  # ID użytkownika mansy_
@@ -590,6 +655,51 @@ async def on_message(message):
             inline=False
         )
         await message.channel.send(embed=embed)
+
+    # Komenda !challenge - losowanie wyzwania
+    if message.content.startswith('!wyzwanie'):
+        if not challenges:
+            await message.channel.send("Brak zapisanych wyzwań. Dodaj jedno za pomocą `!dodajwyzwanie`!")
+        else:
+            challenge = random.choice(challenges)
+            embed = discord.Embed(
+                title="🎯 Twoje wyzwanie CS2",
+                description=f"**{challenge}**",
+                color=discord.Color.green()
+            )
+            embed.set_footer(text="Powodzenia! Dodaj własne wyzwanie za pomocą `!dodajwyzwanie`")
+            await message.channel.send(embed=embed)
+
+    # Komenda !addchallenge - dodawanie nowego wyzwania
+    if message.content.startswith('!dodajwyzwanie'):
+        parts = message.content.split(" ", 1)
+        if len(parts) < 2:
+            await message.channel.send("Podaj treść wyzwania, np. `!dodajwyzwanie Zagraj tylko z nożem`")
+        else:
+            new_challenge = parts[1].strip()
+            challenges.append(new_challenge)
+            save_challenges()  # Zapisanie do pliku
+            embed = discord.Embed(
+                title="✅ Nowe wyzwanie dodane!",
+                description=f"Dodałeś: **{new_challenge}**",
+                color=discord.Color.green()
+            )
+            embed.set_footer(text="Spróbuj je wylosować za pomocą `!wyzwanie`")
+            await message.channel.send(embed=embed)
+
+    # Komenda !challenges - wyświetlanie listy wszystkich wyzwań
+    if message.content.startswith('!wyzwania'):
+        if not challenges:
+            await message.channel.send("Brak zapisanych wyzwań. Dodaj jedno za pomocą `!dodajwyzwanie`!")
+        else:
+            challenges_list = "\n".join(f"{i + 1}. {challenge}" for i, challenge in enumerate(challenges))
+            embed = discord.Embed(
+                title="📋 Lista wyzwań CS2",
+                description=f"Oto dostępne wyzwania:\n{challenges_list}",
+                color=discord.Color.orange()
+            )
+            embed.set_footer(text="Użyj `!wyzwanie`, aby wylosować jedno z nich!")
+            await message.channel.send(embed=embed)
 
 # Uruchomienie bota
 client.run(DISCORD_TOKEN)
