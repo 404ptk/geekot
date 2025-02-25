@@ -3,7 +3,7 @@
 <hr>
 <p align="center">Co potrzebujesz aby skorzystać z wszystkich możliwości bota?</p>
 <p align="center">
-  <ul>
+  <ul align="center">
     <li>Twój klucz API Faceit</li>
     <li>Twój klucz API Twitch</li>
   </ul>
