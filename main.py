@@ -4,6 +4,7 @@ import discord
 import requests
 import os
 import re
+import json
 
 
 # Funkcja do wczytania tokena z pliku
@@ -158,10 +159,27 @@ def get_faceit_player_matches(player_id):
         return None
 
 
+# Plik do przechowywania poprzednich danych rankingu
+FACEIT_RANKING_FILE = "faceit_ranking.txt"
+
+# Funkcja do zapisywania danych rankingu do pliku
+def save_faceit_ranking(player_stats):
+    with open(FACEIT_RANKING_FILE, "w") as file:
+        json.dump(player_stats, file)
+
+# Funkcja do wczytywania poprzednich danych rankingu
+def load_faceit_ranking():
+    try:
+        with open(FACEIT_RANKING_FILE, "r") as file:
+            return json.load(file)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return []
+
 # Funkcja do pobierania statystyk dla graczy w Discordzie
 async def get_discordfaceit_stats():
     player_stats = []
 
+    # Pobieranie nowych danych z Faceit
     for nickname in player_nicknames:
         player_data = get_faceit_player_data(nickname)
         if player_data:
@@ -176,6 +194,10 @@ async def get_discordfaceit_stats():
     # Sortowanie według ELO i poziomu
     player_stats.sort(key=lambda x: (x['elo'], x['level']), reverse=True)
 
+    # Wczytanie poprzednich danych
+    previous_stats = load_faceit_ranking()
+    previous_positions = {player['nickname']: i for i, player in enumerate(previous_stats)}
+
     # Tworzenie embeda
     embed = discord.Embed(
         title="📊 **Ranking Faceit**",
@@ -183,19 +205,37 @@ async def get_discordfaceit_stats():
         color=discord.Color.blue()
     )
 
-    # Dodanie graczy do embeda
+    # Dodanie graczy do embeda z porównaniem
     for index, player in enumerate(player_stats):
         rank_emoji = "🥇" if index == 0 else "🥈" if index == 1 else "🥉" if index == 2 else "🎮"
         flag = "🇺🇦" if player['nickname'] == "PhesterM9" else "🇵🇱"
 
+        # Porównanie ELO i pozycji
+        elo_diff = 0
+        position_change = ""
+        if player['nickname'] in previous_positions:
+            prev_player = next(p for p in previous_stats if p['nickname'] == player['nickname'])
+            elo_diff = player['elo'] - prev_player['elo']
+            prev_pos = previous_positions[player['nickname']]
+            if prev_pos > index:
+                position_change = "\t⬆️"  # Awans
+            elif prev_pos < index:
+                position_change = "\t⬇️"  # Spadek
+            else:
+                position_change = "\t➖"  # Bez zmian
+
+        elo_change_str = f" ({'+' if elo_diff > 0 else ''}{elo_diff})" if elo_diff != 0 else ""
         embed.add_field(
-            name=f"{rank_emoji} **{player['nickname']}** {flag}",
-            value=f"**ELO**: {player['elo']} | **LVL**: {player['level']}",
+            name=f"{rank_emoji} **{player['nickname']}** {flag} {position_change}",
+            value=f"**ELO**: {player['elo']}{elo_change_str} | **LVL**: {player['level']}",
             inline=False
         )
 
     # Stopka i dodatkowe info
-    embed.set_footer(text="📅 Ranking generowany automatycznie")
+    embed.set_footer(text="📅 Ranking generowany automatycznie | Zmiany względem poprzedniego wywołania")
+
+    # Zapis nowych danych do pliku
+    save_faceit_ranking(player_stats)
 
     return embed
 
@@ -298,14 +338,31 @@ def get_twitch_channel_data(username, access_token):
             return {'live': False, 'thumbnail_url': None, 'title': 'Offline'}
     return None
 
+reaction_active = False
+
 # Obsługa wiadomości użytkowników
 @client.event
 async def on_message(message):
+    global reaction_active
     if message.author == client.user:
         return
 
-    if message.author.name.lower() == "phester102":
-        await message.add_reaction("🥶")  # Dodanie reakcji :cold_face:
+    if message.content.startswith('!plaster'):
+        has_high_tier_guard = any(role.name.lower() == "high tier guard" for role in message.author.roles)
+
+        if not has_high_tier_guard:
+            await message.channel.send("nice try xd")
+            return
+
+        if not reaction_active:
+            reaction_active = True
+            await message.channel.send("Włączono reagowanie na plastra")
+        else:
+            reaction_active = False
+            await message.channel.send("Wyłączono reagowanie na plastra")
+
+    if reaction_active and message.author.name.lower() == "utopiasz":
+        await message.add_reaction("🥶")
 
     if message.content.startswith('!geek'):
         embed = discord.Embed(
@@ -333,7 +390,7 @@ async def on_message(message):
 
         embed.add_field(name="🎯 **CS2 Instanty**", value="`!instant` - Lista dostępnych instantów (CS2)", inline=False)
 
-        embed.add_field(name="🔥 **Challenges CS2**",
+        embed.add_field(name="🔥 **Wyzwania CS2**",
                         value="`!wyzwanie` - Losuje wyzwanie z listy challengów\n"
                               "`!dodajwyzwanie` - Dodaj wyzwanie do listy challengów\n"
                               "`!usunwyzwanie [nr]` - Usuń wyzwanie z listy\n"
