@@ -67,13 +67,31 @@ def load_challenges():
 # Wczytanie wyzwań przy starcie bota
 load_challenges()
 
+reaction_name = "phester102"
+reaction_active = False
+
+def save_reaction_state():
+    with open('txt/reaction_state.json', 'w') as f:
+        json.dump({'reaction_active': reaction_active}, f)
+
+def load_reaction_state():
+    global reaction_active
+    try:
+        with open('txt/reaction_state.json', 'r') as f:
+            data = json.load(f)
+            reaction_active = data.get('reaction_active', False)
+    except FileNotFoundError:
+        reaction_active = False
+
 # Obsługa zdarzenia - gdy bot jest gotowy
 @client.event
 async def on_ready():
-    print(f'{client.user} has connected to Discord!')
-    await client.change_presence(activity=discord.Game(name="!geek - Jestem geekiem"))
 
-reaction_active = False
+    load_reaction_state()
+
+    print(f'{client.user} has connected to Discord!\n'
+          f'Reacting to {reaction_name}: {reaction_active}')
+    await client.change_presence(activity=discord.Game(name="!geek - Jestem geekiem"))
 
 # Obsługa wiadomości użytkowników
 @client.event
@@ -81,6 +99,9 @@ async def on_message(message):
     global reaction_active
     if message.author == client.user:
         return
+
+    if message.content.startswith('!'):
+        print(f'Uzytkownik {message.author} uzyl komendy {message.content}')
 
     if message.content.startswith('!plaster'):
         has_high_tier_guard = any(role.name.lower() == "high tier guard" for role in message.author.roles)
@@ -91,12 +112,16 @@ async def on_message(message):
 
         if not reaction_active:
             reaction_active = True
-            await message.channel.send("Włączono reagowanie na plastra")
+            await message.channel.send(f"Włączono reagowanie na {reaction_name}")
+            print(f"Reacting to {reaction_name}: {reaction_active}")
         else:
             reaction_active = False
-            await message.channel.send("Wyłączono reagowanie na plastra")
+            await message.channel.send(f"Wyłączono reagowanie na {reaction_name}")
+            print(f"Reacting to {reaction_name}: {reaction_active}")
 
-    if reaction_active and message.author.name.lower() == "phester102":
+        save_reaction_state()
+
+    if reaction_active and message.author.name.lower() == reaction_name:
         await message.add_reaction("🥶")
 
     if message.content.startswith('!geek'):
@@ -121,7 +146,8 @@ async def on_message(message):
         embed.add_field(name="🚀 **Spawn Masnego**", value="`!spawn` - Spawn Masnego\n"
                                                           "`!spawn [godzina]` - Można wpisać np. `!spawn 16`",
                         inline=False)
-        embed.add_field(name="🎥 **Stan streamera**", value="`!stan [H2P_Gucio]` - Pokazuje ostatnią/aktualną klatkę ze streama", inline=False)
+        embed.add_field(name="🎥 **Stan streamera**", value="`!stan [H2P_Gucio]` - "
+                                                           "Pokazuje ostatnią/aktualną klatkę ze streama", inline=False)
 
         embed.add_field(name="🎯 **CS2 Instanty**", value="`!instant` - Lista dostępnych instantów (CS2)", inline=False)
 
