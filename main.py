@@ -4,11 +4,13 @@ import discord
 import requests
 import os
 import re
+from discord.ext import commands
 import json
 
 from twitch_utils import *
 from masny_utils import *
 from faceit_utils import *
+#from soundcloud_utils import *
 
 
 # Funkcja do wczytania tokena z pliku
@@ -87,6 +89,7 @@ def load_reaction_state():
 @client.event
 async def on_ready():
 
+    # send_daily_stats(client)
     load_reaction_state()
 
     print(f'{client.user} has connected to Discord!\n'
@@ -101,7 +104,8 @@ async def on_message(message):
         return
 
     if message.content.startswith('!'):
-        print(f'Uzytkownik {message.author} uzyl komendy {message.content}')
+        if len(message.content) > 1:
+            print(f'Uzytkownik {message.author} uzyl komendy {message.content}')
 
     if message.content.startswith('!plaster'):
         has_high_tier_guard = any(role.name.lower() == "high tier guard" for role in message.author.roles)
@@ -124,7 +128,7 @@ async def on_message(message):
     if reaction_active and message.author.name.lower() == reaction_name:
         await message.add_reaction("🥶")
 
-    if message.content.startswith('!geek'):
+    if message.content.startswith(('!geek', '!pomoc', '!help')):
         embed = discord.Embed(
             title="📜 Dostępne komendy",
             description="Lista komend dostępnych na serwerze:",
@@ -136,7 +140,8 @@ async def on_message(message):
 
         embed.add_field(name="📊 **Tabela Masnego**", value="`!masny` - Tabela Masnego\n"
                                                            "`!masny [1-5]` - Zajęte miejsce w tabeli\n"
-                                                           "`!masny -1` - Odejmowanie miejsca 1 w tabeli", inline=False)
+                                                           "`!masny -1` - Odejmowanie miejsca 1 w tabeli\n"
+                                                           "!resetmasny - Resetowanie tabeli", inline=False)
 
         embed.add_field(name="🎭 **Wymówki Masnego**", value="`!dodajwymowke` - Dodawanie wymówek\n"
                                                             "`!losujwymowke` - Losowanie wymówek\n"
@@ -584,6 +589,28 @@ async def on_message(message):
             )
             embed.set_footer(text="Użyj `!wyzwanie`, aby wylosować jedno z nich!")
             await message.channel.send(embed=embed)
+
+    # if message.content.startswith("!track_stats"):
+    #     await send_track_stats(message)
+
+    if message.content.startswith("!last"):
+        args = message.content.split(" ")
+
+        if len(args) < 2:  # Jeśli użytkownik nie podał nicku
+            await message.channel.send("❌ Użycie: `!last [nickname]`")
+            return
+
+        nickname = args[1]  # Pobieramy podany nick
+        await message.channel.send(f"🔍 Pobieram dane dla gracza **{nickname}**...")
+
+        embed = await get_last_match_stats(nickname)  # Pobieramy dane
+        await message.channel.send(embed=embed)  # Wysyłamy wynik
+
+    if message.content.startswith("!resetmasny"):
+        resetmasny()
+        await message.channel.send("✅ Statystyki w masny.txt zostały zresetowane!\n*Aktualnie z niewiadomych przyczyn "
+                                   "plik się resetuje, ale statystyki wyświetlają się stare, po resecie bota będzie "
+                                   "poprawna aktualna liczba miejsc.*")
 
 # Uruchomienie bota
 client.run(DISCORD_TOKEN)

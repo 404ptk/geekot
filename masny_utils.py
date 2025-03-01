@@ -26,6 +26,7 @@ def save_masny_data():
 def load_masny_data():
     # Sprawdzanie, czy plik istnieje
     if not os.path.exists(MASNY_FILE):
+        print("Unable to read masny.txt - creating a new one.")
         save_masny_data()  # Inicjalizacja pliku z zerowymi wartościami
 
     # Wczytywanie danych z pliku i walidacja formatu danych
@@ -36,8 +37,8 @@ def load_masny_data():
                 if key in masny_counter:  # Sprawdzanie, czy klucz jest prawidłowy
                     masny_counter[key] = int(count)
             except ValueError:
-                print(f"Błąd przy wczytywaniu linii: {line}")
-
+                print(f"Error in reading line: {line}")
+        print("Masny.txt loaded.")
 
 # Wczytanie danych przy starcie bota
 load_masny_data()
@@ -62,10 +63,12 @@ def load_wymowki():
         with open(WYMOWKI_FILE, "r") as file:
             for line in file:
                 wymowki.append(line.strip())
+            print("wymowki.txt loaded.")
 
 
 # Wczytujemy wymówki przy starcie bota
 load_wymowki()
+
 
 # Funkcja do wyświetlania ostatniego meczu gracza `-Masny-`
 async def display_last_match_stats():
@@ -101,3 +104,11 @@ async def display_last_match_stats():
     last_match_stats += f'**HS%**: {hs}%\n'
 
     return last_match_stats
+
+
+def resetmasny():
+    load_masny_data()
+    global masny_counter
+    masny_counter = {key: 0 for key in masny_counter}  # Resetujemy licznik
+    save_masny_data()  # Zapisujemy zerowane statystyki do pliku
+    load_masny_data()

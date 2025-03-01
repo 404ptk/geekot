@@ -2,6 +2,9 @@ import requests
 import json
 import discord
 
+#TODO:
+# komenda na reset
+
 def load_token(filename):
     try:
         with open(filename, 'r') as file:
@@ -12,6 +15,7 @@ def load_token(filename):
     except Exception as e:
         print(f"Wystąpił błąd podczas wczytywania tokena z pliku {filename}: {e}")
         return None
+
 
 FACEIT_API_KEY = load_token('txt/faceit_api.txt')
 
@@ -39,7 +43,7 @@ def get_faceit_player_matches(player_id):
     response = requests.get(url, headers=headers)
     if response.status_code == 200:
         # Wyświetlenie pełnej odpowiedzi JSON dla analizy
-        print("Faceit API:", response.json())
+        # print("Faceit API:", response.json())
         return response.json().get('items', [])  # Zwraca pustą listę jeśli nie ma 'items'
     else:
         print("Błąd połączenia z Faceit API:", response.status_code)
@@ -49,10 +53,12 @@ def get_faceit_player_matches(player_id):
 # Plik do przechowywania poprzednich danych rankingu
 FACEIT_RANKING_FILE = "txt/faceit_ranking.txt"
 
+
 # Funkcja do zapisywania danych rankingu do pliku
 def save_faceit_ranking(player_stats):
     with open(FACEIT_RANKING_FILE, "w") as file:
         json.dump(player_stats, file)
+
 
 # Funkcja do wczytywania poprzednich danych rankingu
 def load_faceit_ranking():
@@ -61,6 +67,7 @@ def load_faceit_ranking():
             return json.load(file)
     except (FileNotFoundError, json.JSONDecodeError):
         return []
+
 
 # Funkcja do pobierania statystyk dla graczy w Discordzie
 async def get_discordfaceit_stats():
@@ -123,5 +130,81 @@ async def get_discordfaceit_stats():
 
     # Zapis nowych danych do pliku
     save_faceit_ranking(player_stats)
+
+    return embed
+
+
+# Funkcja do pobierania szczegółowych statystyk meczu
+def get_faceit_match_details(match_id):
+    url = f"https://open.faceit.com/data/v4/matches/{match_id}/stats"
+    headers = {"Authorization": f"Bearer {FACEIT_API_KEY}"}
+    response = requests.get(url, headers=headers)
+
+    if response.status_code != 200:
+        return None
+
+    match_data = response.json()
+    teams = {}
+
+    for team in match_data["rounds"][0]["teams"]:
+        team_name = team["team_id"]
+        teams[team_name] = {"players": []}
+
+        for player in team["players"]:
+            teams[team_name]["players"].append({
+                "nickname": player["nickname"],
+                "kills": int(player["player_stats"]["Kills"]),
+                "deaths": int(player["player_stats"]["Deaths"]),
+                "assists": int(player["player_stats"]["Assists"]),
+                "headshots": int(player["player_stats"]["Headshots %"]),
+            })
+
+    return {
+        "map": match_data["rounds"][0]["round_stats"]["Map"],
+        "teams": teams
+    }
+
+
+async def get_last_match_stats(nickname):
+    player_data = get_faceit_player_data(nickname)
+    if not player_data:
+        return f'❌ Nie znaleziono gracza o nicku **{nickname}** na Faceit.'
+
+    player_id = player_data['player_id']
+    player_nickname = player_data['nickname']
+    matches = get_faceit_player_matches(player_id)
+
+    if not matches or len(matches) == 0:
+        return f'❌ Nie udało się pobrać danych o meczach gracza **{player_nickname}**.'
+
+    last_match = matches[0]
+
+    if "match_id" not in last_match:
+        return f'❌ Brak danych o ostatnim meczu dla **{player_nickname}**.'
+
+    match_id = last_match["match_id"]
+    match_stats = get_faceit_match_details(match_id)
+
+    if not match_stats:
+        return f'❌ Nie udało się pobrać szczegółowych danych o meczu.'
+
+    map_name = match_stats.get("map", "Nieznana").replace("de_", "")
+
+    embed = discord.Embed(
+        title=f"🎮 **Ostatni mecz gracza {player_nickname}**",
+        description=f"🗺 **Mapa:** {map_name}",
+        color=discord.Color.blue()
+    )
+
+    for team_name, team_data in match_stats["teams"].items():
+        player_found = any(p["nickname"] == player_nickname for p in team_data["players"])
+        if player_found:
+            team_stats = "\n".join(
+                f"**{p['nickname']}** – K: {p.get('kills', 0)}, D: {p.get('deaths', 0)}, A: {p.get('assists', 0)}, HS%: {p.get('headshots', 0)}%"
+                for p in team_data["players"]
+            )
+            embed.add_field(name=f"🔥 Drużyna {team_name}", value=team_stats, inline=False)
+
+    embed.set_footer(text="📊 Statystyki ostatniego meczu")
 
     return embed
