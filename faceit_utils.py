@@ -164,7 +164,6 @@ def get_faceit_match_details(match_id):
         "teams": teams
     }
 
-
 async def get_last_match_stats(nickname):
     player_data = get_faceit_player_data(nickname)
     if not player_data:
@@ -172,39 +171,121 @@ async def get_last_match_stats(nickname):
 
     player_id = player_data['player_id']
     player_nickname = player_data['nickname']
-    matches = get_faceit_player_matches(player_id)
+    avatar_url = player_data.get('avatar', 'https://www.faceit.com/static/img/avatar.png')
 
+    matches = get_faceit_player_matches(player_id)
     if not matches or len(matches) == 0:
         return f'❌ Nie udało się pobrać danych o meczach gracza **{player_nickname}**.'
 
     last_match = matches[0]
+    match_id = last_match["stats"].get("Match Id")
 
-    if "match_id" not in last_match:
-        return f'❌ Brak danych o ostatnim meczu dla **{player_nickname}**.'
+    if not match_id:
+        return f'❌ Nie udało się znaleźć match_id w danych gracza **{nickname}**.\n🔍 Debug: {last_match}'
 
-    match_id = last_match["match_id"]
+    # Pobranie wyniku meczu
+    result = last_match["stats"].get("Result", "Brak danych")
+    if result == "1":
+        match_result = "✅"
+    elif result == "0":
+        match_result = "❌"
+    else:
+        match_result = "❓"
+
     match_stats = get_faceit_match_details(match_id)
-
     if not match_stats:
         return f'❌ Nie udało się pobrać szczegółowych danych o meczu.'
 
     map_name = match_stats.get("map", "Nieznana").replace("de_", "")
 
     embed = discord.Embed(
-        title=f"🎮 **Ostatni mecz gracza {player_nickname}**",
-        description=f"🗺 **Mapa:** {map_name}",
+        title=f"**Ostatni mecz gracza {player_nickname}**",
+        description=f"**Mapa:** {map_name} | {match_result}",
         color=discord.Color.blue()
     )
+    embed.set_thumbnail(url=avatar_url)
 
+    total_kills, total_deaths, total_assists, total_hs, total_kd = 0, 0, 0, 0, 0
+    match_summary = "```"
+    match_summary += f"{'Gracz'.ljust(20)} {'🔪 K/D/A'.ljust(12)} {'🎯 HS'.ljust(5)} {'K/D'.ljust(5)}\n"
+    match_summary += "-" * 45 + "\n"
+
+    player_team = None  # Zmienna do przechowywania drużyny gracza
+
+    # Wyszukaj drużynę, w której gra wyszukiwany gracz
     for team_name, team_data in match_stats["teams"].items():
-        player_found = any(p["nickname"] == player_nickname for p in team_data["players"])
-        if player_found:
-            team_stats = "\n".join(
-                f"**{p['nickname']}** – K: {p.get('kills', 0)}, D: {p.get('deaths', 0)}, A: {p.get('assists', 0)}, HS%: {p.get('headshots', 0)}%"
-                for p in team_data["players"]
-            )
-            embed.add_field(name=f"🔥 Drużyna {team_name}", value=team_stats, inline=False)
+        for player in team_data["players"]:
+            if player["nickname"] == player_nickname:
+                player_team = team_name
+                break
+        if player_team:
+            break
 
-    embed.set_footer(text="📊 Statystyki ostatniego meczu")
+    # Jeżeli znaleziono drużynę gracza, wyświetl tylko sojuszników
+    if player_team:
+        # Tworzymy listę do przechowywania danych graczy
+        players_list = []
+
+        for team_name, team_data in match_stats["teams"].items():
+            if team_name == player_team:  # Tylko sojusznicy gracza
+                for player in team_data["players"]:
+                    kills = player.get("kills", 0)
+                    deaths = player.get("deaths", 0)
+                    assists = player.get("assists", 0)
+                    hs = player.get("headshots", 0)
+
+                    total_kills += kills
+                    total_deaths += deaths
+                    total_assists += assists
+                    total_hs += hs
+
+                    # Wyliczanie K/D
+                    kd_ratio = kills / deaths if deaths > 0 else kills  # Unikamy dzielenia przez 0
+                    total_kd += kd_ratio
+
+                    # Dodajemy gracza do listy jako słownik
+                    players_list.append({
+                        "nickname": player["nickname"],
+                        "kills": kills,
+                        "deaths": deaths,
+                        "assists": assists,
+                        "hs": hs,
+                        "kd_ratio": kd_ratio
+                    })
+
+        # Sortujemy listę graczy według liczby zabójstw (malejąco)
+        players_list.sort(key=lambda x: x["kills"], reverse=True)
+
+        # Generujemy podsumowanie po posortowaniu
+        for player in players_list:
+            stats = f"{player['kills']}/{player['deaths']}/{player['assists']}"
+            if player["nickname"] == player_nickname:
+                match_summary += f"{player['nickname'].ljust(20)} {stats.ljust(12)} {str(player['hs']).ljust(5)} {player['kd_ratio']:.2f}\n"
+            else:
+                match_summary += f"{player['nickname'].ljust(20)} {stats.ljust(12)} {str(player['hs']).ljust(5)} {player['kd_ratio']:.2f}\n"
+
+    match_summary += "```"
+
+    embed.add_field(
+        name=f"📊 Statystyki gracza {nickname} i drużyny",
+        value=match_summary if match_summary else "Brak danych",
+        inline=False
+    )
+
+    # Zamiast średnich statystyk, podaj link do meczu
+    match_link = f"https://www.faceit.com/en/csgo/match/{match_id}"
+
+    embed.add_field(
+        name="🔗 Link do lobby",
+        value=f"[Kliknij]({match_link})",
+        inline=False
+    )
+
+    embed.set_footer(text="📊 Statystyki ostatniego meczu | Sprawdź swoje pod !last [nick]")
 
     return embed
+
+
+
+
+

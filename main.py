@@ -136,7 +136,8 @@ async def on_message(message):
         )
 
         embed.add_field(name="🎮 **Faceit**", value="`!faceit [nick]` - Statystyki profilu [nick]\n"
-                                                   "`!discordfaceit` - Statystyki discorda na Faceicie", inline=False)
+                                                   "`!discordfaceit` - Statystyki discorda na Faceicie\n"
+                                                   "`!last [nick]` - Statystyki drużyny gracza w ostatnim meczu", inline=False)
 
         embed.add_field(name="📊 **Tabela Masnego**", value="`!masny` - Tabela Masnego\n"
                                                            "`!masny [1-5]` - Zajęte miejsce w tabeli\n"
@@ -390,6 +391,7 @@ async def on_message(message):
     }
 
     if message.content.startswith('!masny'):
+        load_masny_data()
         parts = message.content.split()
 
         # Obsługa komendy w formacie "!masny X", gdzie X to liczba od 1 do 5
@@ -593,21 +595,23 @@ async def on_message(message):
     # if message.content.startswith("!track_stats"):
     #     await send_track_stats(message)
 
-    if message.content.startswith("!last"):
-        args = message.content.split(" ")
-
-        if len(args) < 2:  # Jeśli użytkownik nie podał nicku
-            await message.channel.send("❌ Użycie: `!last [nickname]`")
+    if message.content.startswith('!last'):
+        parts = message.content.split()
+        if len(parts) < 2:
+            await message.channel.send("❌ Musisz podać nick gracza! Użycie: `!last <nickname>`")
             return
 
-        nickname = args[1]  # Pobieramy podany nick
-        await message.channel.send(f"🔍 Pobieram dane dla gracza **{nickname}**...")
+        nickname = parts[1]
+        result = await get_last_match_stats(nickname)
 
-        embed = await get_last_match_stats(nickname)  # Pobieramy dane
-        await message.channel.send(embed=embed)  # Wysyłamy wynik
+        if isinstance(result, discord.Embed):  # Jeśli funkcja zwróciła Embed
+            await message.channel.send(embed=result)
+        else:  # Jeśli funkcja zwróciła tekst
+            await message.channel.send(result)
 
     if message.content.startswith("!resetmasny"):
         resetmasny()
+        await display_last_match_stats()
         await message.channel.send("✅ Statystyki w masny.txt zostały zresetowane!\n*Aktualnie z niewiadomych przyczyn "
                                    "plik się resetuje, ale statystyki wyświetlają się stare, po resecie bota będzie "
                                    "poprawna aktualna liczba miejsc.*")
