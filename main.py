@@ -13,6 +13,9 @@ from faceit_utils import *
 #from soundcloud_utils import *
 
 
+#TODO:
+#dodać wynik meczu przy !last (tzn. np 13:10)
+
 # Funkcja do wczytania tokena z pliku
 def load_token(filename):
     try:
@@ -84,6 +87,25 @@ def load_reaction_state():
             reaction_active = data.get('reaction_active', False)
     except FileNotFoundError:
         reaction_active = False
+
+GAMES_FILE = "txt/gry.json"
+games = []
+
+def load_games():
+    """Wczytuje listę gier z pliku JSON."""
+    if os.path.exists(GAMES_FILE):
+        with open(GAMES_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    else:
+        return []
+
+def save_games():
+    """Zapisuje listę gier do pliku JSON."""
+    with open(GAMES_FILE, "w", encoding="utf-8") as f:
+        json.dump(games, f, indent=4, ensure_ascii=False)
+
+# Wczytanie gier przy starcie bota
+games = load_games()
 
 # Obsługa zdarzenia - gdy bot jest gotowy
 @client.event
@@ -162,6 +184,13 @@ async def on_message(message):
                               "`!dodajwyzwanie` - Dodaj wyzwanie do listy challengów\n"
                               "`!usunwyzwanie [nr]` - Usuń wyzwanie z listy\n"
                               "`!wyzwania` - Lista dostępnych challengów", inline=False)
+
+        embed.add_field(name="🎮 **Gry do zagrania**",
+                        value="`!gry` - Lista gier\n"
+                              "`!dodajgre [nazwa]` - Dodaj gre do listy\n"
+                              "`!dodajopis [nr] [opis]` - Dodaj opis gry\n"
+                              "`!edytujopis [nr] [opis]` - Edytuj opis gry\n"
+                              "`!usungre [nr]` - Usuń gre z listy")
 
         embed.set_footer(text="Geekot - Jestem geekiem, największym geekiem 🎮")
 
@@ -615,6 +644,187 @@ async def on_message(message):
         await message.channel.send("✅ Statystyki w masny.txt zostały zresetowane!\n*Aktualnie z niewiadomych przyczyn "
                                    "plik się resetuje, ale statystyki wyświetlają się stare, po resecie bota będzie "
                                    "poprawna aktualna liczba miejsc.*")
+
+    if message.content.startswith("!dodajgre "):
+        game_name = message.content[len("!dodajgre "):].strip()
+        if not game_name:
+            embed = discord.Embed(
+                title="Błąd",
+                description="Użycie: `!dodajgre [nazwa gry]`",
+                color=discord.Color.red()
+            )
+            await message.channel.send(embed=embed)
+            return
+
+        # Dodajemy grę z pustym opisem
+        games.append({"name": game_name, "description": ""})
+        save_games()
+
+        # Tworzymy embed z potwierdzeniem
+        embed = discord.Embed(
+            title="Dodano grę",
+            description=f"Pomyślnie dodano **{game_name}** do listy gier.",
+            color=discord.Color.blue()
+        )
+        await message.channel.send(embed=embed)
+
+    if message.content.startswith("!dodajopis "):
+        parts = message.content.split(" ", 2)
+        if len(parts) < 3:
+            embed = discord.Embed(
+                title="Błąd",
+                description="Użycie: `!dodajopis [numer gry z listy] [opis gry]`",
+                color=discord.Color.red()
+            )
+            await message.channel.send(embed=embed)
+            return
+
+        index_str = parts[1].strip()
+        opis = parts[2].strip()
+
+        if not index_str.isdigit():
+            embed = discord.Embed(
+                title="Błąd",
+                description="Numer gry musi być liczbą!",
+                color=discord.Color.red()
+            )
+            await message.channel.send(embed=embed)
+            return
+
+        index = int(index_str) - 1
+        if index < 0 or index >= len(games):
+            embed = discord.Embed(
+                title="Błąd",
+                description="Nieprawidłowy numer gry!",
+                color=discord.Color.red()
+            )
+            await message.channel.send(embed=embed)
+            return
+
+        games[index]["description"] = opis
+        save_games()
+
+        embed = discord.Embed(
+            title="Dodano opis",
+            description=(
+                f"Gra: **{games[index]['name']}**\n"
+                f"Opis: {opis}"
+            ),
+            color=discord.Color.blue()
+        )
+        await message.channel.send(embed=embed)
+
+    elif message.content.startswith("!usungre "):
+        parts = message.content.split(" ", 1)
+        if len(parts) < 2:
+            embed = discord.Embed(
+                title="Błąd",
+                description="Użycie: `!usungre [numer gry z listy]`",
+                color=discord.Color.red()
+            )
+            await message.channel.send(embed=embed)
+            return
+
+        index_str = parts[1].strip()
+        if not index_str.isdigit():
+            embed = discord.Embed(
+                title="Błąd",
+                description="Numer gry musi być liczbą!",
+                color=discord.Color.red()
+            )
+            await message.channel.send(embed=embed)
+            return
+
+        index = int(index_str) - 1
+        if index < 0 or index >= len(games):
+            embed = discord.Embed(
+                title="Błąd",
+                description="Nieprawidłowy numer gry!",
+                color=discord.Color.red()
+            )
+            await message.channel.send(embed=embed)
+            return
+
+        removed_game = games.pop(index)
+        save_games()
+
+        embed = discord.Embed(
+            title="Usunięto grę",
+            description=f"Z listy usunięto: **{removed_game['name']}**",
+            color=discord.Color.orange()
+        )
+        await message.channel.send(embed=embed)
+
+    elif message.content.startswith("!edytujopis "):
+        parts = message.content.split(" ", 2)
+        if len(parts) < 3:
+            embed = discord.Embed(
+                title="Błąd",
+                description="Użycie: `!edytujopis [numer gry z listy] [nowy opis]`",
+                color=discord.Color.red()
+            )
+            await message.channel.send(embed=embed)
+            return
+
+        index_str = parts[1].strip()
+        nowy_opis = parts[2].strip()
+
+        if not index_str.isdigit():
+            embed = discord.Embed(
+                title="Błąd",
+                description="Numer gry musi być liczbą!",
+                color=discord.Color.red()
+            )
+            await message.channel.send(embed=embed)
+            return
+
+        index = int(index_str) - 1
+        if index < 0 or index >= len(games):
+            embed = discord.Embed(
+                title="Błąd",
+                description="Nieprawidłowy numer gry!",
+                color=discord.Color.red()
+            )
+            await message.channel.send(embed=embed)
+            return
+
+        stara_nazwa = games[index]["name"]
+        games[index]["description"] = nowy_opis
+        save_games()
+
+        embed = discord.Embed(
+            title="Edytowano opis gry",
+            description=(
+                f"Gra: **{stara_nazwa}**\n"
+                f"Nowy opis: {nowy_opis}"
+            ),
+            color=discord.Color.blue()
+        )
+        await message.channel.send(embed=embed)
+
+    elif message.content.startswith("!gry"):
+        if not games:
+            embed = discord.Embed(
+                title="Lista gier",
+                description="Brak gier na liście.",
+                color=discord.Color.blue()
+            )
+            await message.channel.send(embed=embed)
+        else:
+            embed = discord.Embed(
+                title="Lista gier",
+                description="Poniżej znajduje się lista gier, w które chcemy zagrać:",
+                color=discord.Color.blue()
+            )
+            for i, g in enumerate(games, start=1):
+                name = g["name"]
+                desc = g["description"] if g["description"] else "Brak opisu"
+                embed.add_field(
+                    name=f"{i}. {name}",
+                    value=desc,
+                    inline=False
+                )
+            await message.channel.send(embed=embed)
 
 # Uruchomienie bota
 client.run(DISCORD_TOKEN)
