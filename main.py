@@ -466,7 +466,7 @@ async def on_message(message):
         if len(parts) == 2 and parts[1] in masny_counter:
             masny_counter[parts[1]] += 1
             save_masny_data()  # Zapisanie stanu po każdej zmianie
-
+            print(f"Masny took {masny_counter[parts[1]]} place on faceit.")
             # Pobranie tabeli z ostatniego meczu -Masny-
             last_match_stats = await display_last_match_stats()
 
@@ -489,6 +489,7 @@ async def on_message(message):
             if masny_counter[place] > 0:
                 masny_counter[place] -= 1
                 save_masny_data()  # Zapisanie stanu po każdej zmianie
+                print(f"Removed one place from {place} place in masny list.")
                 embed = discord.Embed(
                     title="📉 Aktualizacja tabeli Masnego",
                     description=f"Miejsce **{place}** zostało zmniejszone o 1.",
@@ -597,6 +598,7 @@ async def on_message(message):
                 if 0 <= index < len(challenges):
                     removed_challenge = challenges.pop(index)  # Usunięcie wyzwania
                     save_challenges()  # Aktualizacja pliku
+                    print(f"Deleted challenge '{removed_challenge}' from list.")
                     embed = discord.Embed(
                         title="✅ Wyzwanie usunięte",
                         description=f"Usunięto: **{removed_challenge}**",
@@ -645,6 +647,7 @@ async def on_message(message):
                 color=discord.Color.green()
             )
             embed.set_footer(text="Spróbuj je wylosować za pomocą `!wyzwanie`")
+            print(f"Added challenge '{new_challenge}' to list.")
             await message.channel.send(embed=embed)
 
     # Komenda !challenges - wyświetlanie listy wszystkich wyzwań
@@ -681,6 +684,7 @@ async def on_message(message):
     if message.content.startswith("!resetmasny"):
         resetmasny()
         await display_last_match_stats()
+        print("Reseted masny.txt file.")
         await message.channel.send("✅ Statystyki w masny.txt zostały zresetowane!\n*Aktualnie z niewiadomych przyczyn "
                                    "plik się resetuje, ale statystyki wyświetlają się stare, po resecie bota będzie "
                                    "poprawna aktualna liczba miejsc.*")
@@ -699,6 +703,7 @@ async def on_message(message):
         # Dodajemy grę z pustym opisem
         games.append({"name": game_name, "description": ""})
         save_games()
+        print(f"Added '{stara_nazwa['name']}' game to list of games to play.")
 
         # Tworzymy embed z potwierdzeniem
         embed = discord.Embed(
@@ -743,6 +748,7 @@ async def on_message(message):
 
         games[index]["description"] = opis
         save_games()
+        print(f"Added description to '{stara_nazwa['name']}' game.")
 
         embed = discord.Embed(
             title="Dodano opis",
@@ -787,6 +793,7 @@ async def on_message(message):
 
         removed_game = games.pop(index)
         save_games()
+        print(f"Removed '{removed_game['name']}' from games to play list.")
 
         embed = discord.Embed(
             title="Usunięto grę",
@@ -831,6 +838,7 @@ async def on_message(message):
         stara_nazwa = games[index]["name"]
         games[index]["description"] = nowy_opis
         save_games()
+        print(f"Edited description of '{stara_nazwa['name']}' game.")
 
         embed = discord.Embed(
             title="Edytowano opis gry",
@@ -904,6 +912,7 @@ async def on_message(message):
         # Resetujemy datę do dzisiejszego dnia
         now = date.today()
         save_reference_date(now)
+        print("Reseted reference day.")
 
         # Tworzymy embed z komunikatem o resecie
         embed = discord.Embed(
