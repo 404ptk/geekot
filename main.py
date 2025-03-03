@@ -23,6 +23,7 @@ from faceit_utils import *
 def load_token(filename):
     try:
         with open(filename, 'r') as file:
+            print(f'{filename} loaded.')
             return file.read().strip()
     except FileNotFoundError:
         print(f"Plik {filename} nie został znaleziony. Upewnij się, że plik istnieje.")
@@ -63,6 +64,7 @@ def load_challenges():
         with open(CHALLENGES_FILE, "r", encoding="utf-8") as file:
             for line in file:
                 challenges.append(line.strip())
+        print("challenges.txt loaded.")
     else:
         # Domyślne wyzwania na start
         default_challenges = [
@@ -71,6 +73,7 @@ def load_challenges():
             "Użyj tylko noża w jednej rundzie",
             "Zabij 3 przeciwników z AWP w jednym meczu"
         ]
+        print("Error in loading challenges.txt - Creating new file.")
         challenges.extend(default_challenges)
         save_challenges()
 
@@ -93,8 +96,10 @@ def load_reaction_state():
         with open('txt/reaction_state.json', 'r') as f:
             data = json.load(f)
             reaction_active = data.get('reaction_active', False)
+        print("reaction_state.json loaded.")
     except FileNotFoundError:
         reaction_active = False
+        print("Error in reading reaction_state.json.")
 
 
 GAMES_FILE = "txt/gry.json"
@@ -130,13 +135,17 @@ def load_reference_date():
         # Tworzymy plik z domyślną datą 2024-11-02
         with open(REFERENCE_DATE_FILE, 'w', encoding="utf-8") as f:
             f.write("2024-11-02")
+            print("Error in loading days_reference.txt - Creating a new file.")
         return date(2024, 11, 2)
+
     else:
         with open(REFERENCE_DATE_FILE, 'r', encoding="utf-8") as f:
             date_str = f.read().strip()
             # Zakładamy format YYYY-MM-DD (np. "2024-11-02")
             year, month, day = date_str.split("-")
+            print("days_reference.txt loaded.")
             return date(int(year), int(month), int(day))
+
 
 def save_reference_date(d: date):
     """
@@ -151,8 +160,9 @@ async def on_ready():
     # send_daily_stats(client)
     load_reaction_state()
 
-    print(f'{client.user} has connected to Discord!\n'
-          f'Reacting to {reaction_name}: {reaction_active}')
+    print(f'\n{client.user} has connected to Discord!\n\n'
+          f'\nOptions:'
+          f'\nReacting to {reaction_name}: {reaction_active}')
     await client.change_presence(activity=discord.Game(name="!geek - Jestem geekiem"))
 
 
