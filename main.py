@@ -1,4 +1,5 @@
 import random
+from datetime import date
 
 import discord
 import requests
@@ -10,11 +11,13 @@ import json
 from twitch_utils import *
 from masny_utils import *
 from faceit_utils import *
-#from soundcloud_utils import *
 
 
-#TODO:
-#dodać wynik meczu przy !last (tzn. np 13:10)
+# from soundcloud_utils import *
+
+
+# TODO:
+# dodać wynik meczu przy !last (tzn. np 13:10)
 
 # Funkcja do wczytania tokena z pliku
 def load_token(filename):
@@ -46,11 +49,13 @@ challenges = []
 # Plik do przechowywania wyzwań
 CHALLENGES_FILE = "txt/challenges.txt"
 
+
 # Funkcja do zapisywania wyzwań do pliku
 def save_challenges():
     with open(CHALLENGES_FILE, "w", encoding="utf-8") as file:
         for challenge in challenges:
             file.write(challenge + "\n")
+
 
 # Funkcja do wczytywania wyzwań z pliku
 def load_challenges():
@@ -69,15 +74,18 @@ def load_challenges():
         challenges.extend(default_challenges)
         save_challenges()
 
+
 # Wczytanie wyzwań przy starcie bota
 load_challenges()
 
 reaction_name = "phester102"
 reaction_active = False
 
+
 def save_reaction_state():
     with open('txt/reaction_state.json', 'w') as f:
         json.dump({'reaction_active': reaction_active}, f)
+
 
 def load_reaction_state():
     global reaction_active
@@ -88,8 +96,10 @@ def load_reaction_state():
     except FileNotFoundError:
         reaction_active = False
 
+
 GAMES_FILE = "txt/gry.json"
 games = []
+
 
 def load_games():
     """Wczytuje listę gier z pliku JSON."""
@@ -99,24 +109,52 @@ def load_games():
     else:
         return []
 
+
 def save_games():
     """Zapisuje listę gier do pliku JSON."""
     with open(GAMES_FILE, "w", encoding="utf-8") as f:
         json.dump(games, f, indent=4, ensure_ascii=False)
 
+
 # Wczytanie gier przy starcie bota
 games = load_games()
+
+REFERENCE_DATE_FILE = "txt/days_reference.txt"
+
+def load_reference_date():
+    """
+    Wczytuje datę odniesienia z pliku.
+    Jeżeli plik nie istnieje, tworzy go z domyślną datą 02.11.2024.
+    """
+    if not os.path.exists(REFERENCE_DATE_FILE):
+        # Tworzymy plik z domyślną datą 2024-11-02
+        with open(REFERENCE_DATE_FILE, 'w', encoding="utf-8") as f:
+            f.write("2024-11-02")
+        return date(2024, 11, 2)
+    else:
+        with open(REFERENCE_DATE_FILE, 'r', encoding="utf-8") as f:
+            date_str = f.read().strip()
+            # Zakładamy format YYYY-MM-DD (np. "2024-11-02")
+            year, month, day = date_str.split("-")
+            return date(int(year), int(month), int(day))
+
+def save_reference_date(d: date):
+    """
+    Zapisuje przekazaną datę odniesienia do pliku.
+    """
+    with open(REFERENCE_DATE_FILE, 'w', encoding="utf-8") as f:
+        f.write(d.isoformat())  # zapisze w formacie YYYY-MM-DD
 
 # Obsługa zdarzenia - gdy bot jest gotowy
 @client.event
 async def on_ready():
-
     # send_daily_stats(client)
     load_reaction_state()
 
     print(f'{client.user} has connected to Discord!\n'
           f'Reacting to {reaction_name}: {reaction_active}')
     await client.change_presence(activity=discord.Game(name="!geek - Jestem geekiem"))
+
 
 # Obsługa wiadomości użytkowników
 @client.event
@@ -159,12 +197,13 @@ async def on_message(message):
 
         embed.add_field(name="🎮 **Faceit**", value="`!faceit [nick]` - Statystyki profilu [nick]\n"
                                                    "`!discordfaceit` - Statystyki discorda na Faceicie\n"
-                                                   "`!last [nick]` - Statystyki drużyny gracza w ostatnim meczu", inline=False)
+                                                   "`!last [nick]` - Statystyki drużyny gracza w ostatnim meczu",
+                        inline=False)
 
         embed.add_field(name="📊 **Tabela Masnego**", value="`!masny` - Tabela Masnego\n"
                                                            "`!masny [1-5]` - Zajęte miejsce w tabeli\n"
                                                            "`!masny -1` - Odejmowanie miejsca 1 w tabeli\n"
-                                                           "!resetmasny - Resetowanie tabeli", inline=False)
+                                                           "`!resetmasny` - Resetowanie tabeli", inline=False)
 
         embed.add_field(name="🎭 **Wymówki Masnego**", value="`!dodajwymowke` - Dodawanie wymówek\n"
                                                             "`!losujwymowke` - Losowanie wymówek\n"
@@ -497,7 +536,8 @@ async def on_message(message):
             # Dodanie informacji o średnim miejscu i najczęściej zajmowanym miejscu
             embed.add_field(name="\n", value="", inline=False)
             embed.add_field(name="📉 Średnie miejsce", value=f"**{avg_position:.2f}**", inline=False)
-            embed.add_field(name="📌 Masny najczęściej zajmuje", value=f"**{most_common_position}** miejsce", inline=False)
+            embed.add_field(name="📌 Masny najczęściej zajmuje", value=f"**{most_common_position}** miejsce",
+                            inline=False)
             embed.add_field(name="\n", value="", inline=False)
 
             embed.set_footer(text="Aby dopisać miejsce Masnego w tabeli wpisz `!masny [miejsce]`")
@@ -714,7 +754,7 @@ async def on_message(message):
         )
         await message.channel.send(embed=embed)
 
-    elif message.content.startswith("!usungre "):
+    if message.content.startswith("!usungre "):
         parts = message.content.split(" ", 1)
         if len(parts) < 2:
             embed = discord.Embed(
@@ -755,7 +795,7 @@ async def on_message(message):
         )
         await message.channel.send(embed=embed)
 
-    elif message.content.startswith("!edytujopis "):
+    if message.content.startswith("!edytujopis "):
         parts = message.content.split(" ", 2)
         if len(parts) < 3:
             embed = discord.Embed(
@@ -802,7 +842,7 @@ async def on_message(message):
         )
         await message.channel.send(embed=embed)
 
-    elif message.content.startswith("!gry"):
+    if message.content.startswith("!gry"):
         if not games:
             embed = discord.Embed(
                 title="Lista gier",
@@ -825,6 +865,57 @@ async def on_message(message):
                     inline=False
                 )
             await message.channel.send(embed=embed)
+
+    if message.content.startswith("!ile"):
+        ref_date = load_reference_date()
+        today = date.today()
+        diff = (today - ref_date).days  # może być też ujemne, jeżeli ref_date jest w przyszłości
+
+        # Budujemy ładny embed z wynikiem
+        embed = discord.Embed(
+            title="Ile dni minęło od ostatniego serwera minecraft?",
+            color=discord.Color.blue()
+        )
+
+        # Jeżeli diff < 0, to data bazowa jest w przyszłości
+        if diff < 0:
+            embed.add_field(
+                name="Wynik",
+                value=(
+                    f"Ustawiona data ({ref_date}) jest w przyszłości!\n"
+                    f"Do **{ref_date}** pozostało jeszcze **{abs(diff)}** dni."
+                ),
+                inline=False
+            )
+        else:
+            embed.add_field(
+                name=f"*{diff} dni*... 😢",
+                value=(
+                    f""
+                ),
+                inline=False
+            )
+            embed.set_image(url="https://media.discordapp.net/attachments/607581853880418366/1302050384184999978/image.png?ex=67c6e2aa&is=67c5912a&hm=a8b52b3437f22136b0436de0c4da302ed0ef8800f64757598c0fd0da3cd639c0&=&format=webp&quality=lossless&width=1437&height=772")
+
+        await message.channel.send(embed=embed)
+
+    # Komenda !ilereset
+    if message.content.startswith("!ilereset"):
+        # Resetujemy datę do dzisiejszego dnia
+        now = date.today()
+        save_reference_date(now)
+
+        # Tworzymy embed z komunikatem o resecie
+        embed = discord.Embed(
+            title="Zresetowano odliczanie",
+            description=(
+                f"Od teraz liczba dni będzie naliczana od dzisiejszej daty:\n"
+                f"**{now.isoformat()}**"
+            ),
+            color=discord.Color.orange()
+        )
+        await message.channel.send(embed=embed)
+
 
 # Uruchomienie bota
 client.run(DISCORD_TOKEN)
