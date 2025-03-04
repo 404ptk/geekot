@@ -30,15 +30,10 @@ def get_kick_access_token():
         'grant_type': 'client_credentials'
     }
 
-    print("[DEBUG] -> get_kick_access_token()")
-    print(f"[DEBUG] client_id={KICK_CLIENT_ID}, secret_id={'***' if KICK_SECRET_ID else None}")
-
     try:
         response = requests.post(url, data=params)  # lub json=params, zależnie od wymagań
-        print(f"[DEBUG] Kick token endpoint status={response.status_code}")
         if response.status_code == 200:
             token = response.json().get('access_token')
-            print(f"[DEBUG] Access token pobrano pomyślnie: {token[:10]}...")  # pierwsze znaki w celach debug
             return token
         else:
             print(f"[DEBUG] Błąd podczas uzyskiwania tokena Kick: {response.status_code}, {response.text}")
@@ -54,15 +49,12 @@ def get_kick_stream_data(username):
     Zwraca słownik {live: bool, title: str, thumbnail_url: str lub None}.
     Jeśli API Kick różni się polami, należy je dopasować.
     """
-    print(f"[DEBUG] -> get_kick_stream_data dla usera '{username}'")
 
     # Ustalony endpoint Kick (przykład):
     url = f"https://api.kichat.dev/api/v2/channels/{username}"
-    print(f"[DEBUG] Pobieram dane kanału z: {url}")
 
     try:
         response = requests.get(url)
-        print(f"[DEBUG] Odpowiedź Kick API: status={response.status_code}")
         if response.status_code == 200:
             data = response.json()
             livestream = data["livestream"]

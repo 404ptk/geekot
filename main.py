@@ -43,6 +43,8 @@ TWITCH_CLIENT_SECRET = load_token('txt/twitch_client_secret.txt')
 # Tworzenie klienta Discord
 intents = discord.Intents.default()
 intents.message_content = True
+intents.members = True
+intents.presences = True
 client = discord.Client(intents=intents)
 
 # Inicjalizacja listy wyzwań
@@ -166,9 +168,26 @@ async def on_ready():
           f'\n- Reacting to {reaction_name}: {reaction_active}')
     await client.change_presence(activity=discord.Game(name="!geek - Jestem geekiem"))
 
-
+TARGET_USER_NAME = "phester102"
 # Obsługa wiadomości użytkowników
 @client.event
+async def on_presence_update(before: discord.Member, after: discord.Member):
+    # Sprawdzamy, czy dotyczy konkretnej osoby (np. phester102):
+    if after.name == TARGET_USER_NAME:
+        old_status = before.status
+        new_status = after.status
+
+        # Reagujemy na przejście z offline na cokolwiek innego (online, idle, dnd)
+        if old_status == discord.Status.offline and new_status != discord.Status.offline:
+            # Id kanału, na którym chcemy wysyłać powiadomienie
+            channel_id = 710042604720488520
+
+            # Pobieramy kanał z kontekstu serwera (guild)
+            channel = after.guild.get_channel(channel_id)
+
+            if channel:
+                await channel.send(f"Użytkownik **{after.name}** jest teraz dostępny!")
+
 async def on_message(message):
     global reaction_active
     if message.author == client.user:
