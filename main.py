@@ -11,6 +11,7 @@ import json
 from twitch_utils import *
 from masny_utils import *
 from faceit_utils import *
+from kick_utils import *
 
 
 # from soundcloud_utils import *
@@ -162,7 +163,7 @@ async def on_ready():
 
     print(f'\n{client.user} has connected to Discord!\n\n'
           f'\nOptions:'
-          f'\nReacting to {reaction_name}: {reaction_active}')
+          f'\n- Reacting to {reaction_name}: {reaction_active}')
     await client.change_presence(activity=discord.Game(name="!geek - Jestem geekiem"))
 
 
@@ -223,7 +224,7 @@ async def on_message(message):
         embed.add_field(name="🚀 **Spawn Masnego**", value="`!spawn` - Spawn Masnego\n"
                                                           "`!spawn [godzina]` - Można wpisać np. `!spawn 16`",
                         inline=False)
-        embed.add_field(name="🎥 **Stan streamera**", value="`!stan [H2P_Gucio]` - "
+        embed.add_field(name="🎥 **Stan streamera**", value="`!stan [kick/twitch] [H2P_Gucio]` - "
                                                            "Pokazuje ostatnią/aktualną klatkę ze streama", inline=False)
 
         embed.add_field(name="🎯 **CS2 Instanty**", value="`!instant` - Lista dostępnych instantów (CS2)", inline=False)
@@ -555,42 +556,82 @@ async def on_message(message):
 
             await message.channel.send(embed=embed)
 
-    if message.content.startswith('!stan'):
+    if message.content.startswith('!stan '):
         parts = message.content.split()
-        if len(parts) < 2:
-            await message.channel.send("Podaj nazwę użytkownika Twitch, np. `!stan Cinkrofwest`")
+        # parts[0] => "!stan"
+        # parts[1] => platforma (twitch/kick)
+        # parts[2] => username
+
+        if len(parts) < 3:
+            await message.channel.send(
+                "Użycie: `!stan [twitch/kick] [nazwa_użytkownika]`\n"
+                "Np: `!stan twitch Jankos` lub `!stan kick some_streamer`"
+            )
             return
 
-        username = parts[1]
-        stream_data = get_twitch_stream_data(username)
+        platform = parts[1].lower()  # "twitch" lub "kick"
+        username = parts[2]
 
-        if stream_data is None:
-            await message.channel.send(f"Nie udało się pobrać danych dla użytkownika {username}.")
-            return
+        if platform == "twitch":
+            # Wywołujemy funkcję pobierającą dane z Twitcha
+            stream_data = get_twitch_stream_data(username)
 
-        embed = discord.Embed(
-            title=f"Stan streama {username}",
-            color=discord.Color.purple()
-        )
+            if stream_data is None:
+                await message.channel.send(f"Nie udało się pobrać danych z Twitcha dla użytkownika {username}.")
+                return
 
-        if stream_data['live']:
-            embed.description = f"**{username} jest na żywo!**\n*{stream_data['title']}*"
-            embed.set_image(url=stream_data['thumbnail_url'])
-        else:
-            embed.description = f"**{username} jest offline.**"
-            # Jeśli nie ma miniaturki, możesz użyć domyślnego obrazu lub pominąć set_image
-            if stream_data['thumbnail_url']:
+            # Tworzymy embed
+            embed = discord.Embed(
+                title=f"Stan streama Twitch: {username}",
+                color=discord.Color.purple()
+            )
+            if stream_data['live']:
+                embed.description = f"**{username} jest na żywo!**\n*{stream_data['title']}*"
                 embed.set_image(url=stream_data['thumbnail_url'])
             else:
-                embed.set_image(
-                    url="https://static-cdn.jtvnw.net/ttv-static/404_preview-1280x720.jpg")  # Domyślny obraz offline Twitcha
+                embed.description = f"**{username} jest offline.**"
+                if stream_data['thumbnail_url']:
+                    embed.set_image(url=stream_data['thumbnail_url'])
+                else:
+                    embed.set_image(url="https://static-cdn.jtvnw.net/ttv-static/404_preview-1280x720.jpg")
 
-        embed.add_field(
-            name="",
-            value=f"[{username}](https://twitch.tv/{username})",
-            inline=False
-        )
-        await message.channel.send(embed=embed)
+            embed.add_field(
+                name="Kanał Twitch",
+                value=f"[{username}](https://twitch.tv/{username})",
+                inline=False
+            )
+            await message.channel.send(embed=embed)
+
+        elif platform == "kick":
+            # Wywołujemy funkcję pobierającą dane z Kick
+            kick_data = get_kick_stream_data(username)
+
+            if not kick_data:
+                await message.channel.send(f"Nie można pobrać danych Kick dla kanału '{username}'.")
+            else:
+                # Możesz również zbudować embed, aby zachować spójność stylu:
+                embed = discord.Embed(
+                    title=f"Stan streama Kick: {username}",
+                    color=discord.Color.green()
+                )
+                if kick_data['live']:
+                    embed.description = f"**{username}** jest właśnie LIVE!\n*{kick_data['title']}*"
+                    if kick_data['thumbnail_url']:
+                        embed.set_image(url=kick_data['thumbnail_url'])
+                else:
+                    embed.description = f"**{username}** jest offline.\n" \
+                                        f"Tytuł (ostatniej sesji / domyślny): {kick_data['title']}"
+                embed.add_field(
+                    name="Kanał Kick",
+                    value=f"https://kick.com/{username}",
+                    inline=False
+                )
+                await message.channel.send(embed=embed)
+        else:
+            # Podano inną platformę
+            await message.channel.send(
+                f"Nierozpoznana platforma `{platform}`. Wybierz `twitch` lub `kick`."
+            )
 
     # Komenda !wyzwania i !usunwyzwanie - wyświetlanie i usuwanie wyzwań
     if message.content.startswith('!wyzwanie') or message.content.startswith('!usunwyzwanie'):
@@ -713,7 +754,7 @@ async def on_message(message):
         # Dodajemy grę z pustym opisem
         games.append({"name": game_name, "description": ""})
         save_games()
-        print(f"Added '{stara_nazwa['name']}' game to list of games to play.")
+        print(f"Added '{game_name}' game to list of games to play.")
 
         # Tworzymy embed z potwierdzeniem
         embed = discord.Embed(
@@ -758,7 +799,7 @@ async def on_message(message):
 
         games[index]["description"] = opis
         save_games()
-        print(f"Added description to '{stara_nazwa['name']}' game.")
+        print(f"Added description to '{games[index['name']]}' game.")
 
         embed = discord.Embed(
             title="Dodano opis",

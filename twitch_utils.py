@@ -1,5 +1,6 @@
 import requests
 
+
 def load_token(filename):
     try:
         with open(filename, 'r') as file:
@@ -11,8 +12,10 @@ def load_token(filename):
         print(f"Wystąpił błąd podczas wczytywania tokena z pliku {filename}: {e}")
         return None
 
+
 TWITCH_CLIENT_ID = load_token('txt/twitch_client_id.txt')
 TWITCH_CLIENT_SECRET = load_token('txt/twitch_client_secret.txt')
+
 
 def get_twitch_access_token():
     url = 'https://id.twitch.tv/oauth2/token'
@@ -27,6 +30,7 @@ def get_twitch_access_token():
     else:
         print(f"Błąd podczas uzyskiwania tokena Twitch: {response.status_code}")
         return None
+
 
 def get_twitch_stream_data(username):
     access_token = get_twitch_access_token()
@@ -53,6 +57,7 @@ def get_twitch_stream_data(username):
     else:
         print(f"Błąd API Twitch: {response.status_code}")
         return None
+
 
 def get_twitch_channel_data(username, access_token):
     url = 'https://api.twitch.tv/helix/channels'
