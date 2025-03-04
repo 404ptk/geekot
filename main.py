@@ -129,6 +129,7 @@ games = load_games()
 
 REFERENCE_DATE_FILE = "txt/days_reference.txt"
 
+
 def load_reference_date():
     """
     Wczytuje datę odniesienia z pliku.
@@ -157,6 +158,7 @@ def save_reference_date(d: date):
     with open(REFERENCE_DATE_FILE, 'w', encoding="utf-8") as f:
         f.write(d.isoformat())  # zapisze w formacie YYYY-MM-DD
 
+
 # Obsługa zdarzenia - gdy bot jest gotowy
 @client.event
 async def on_ready():
@@ -168,7 +170,10 @@ async def on_ready():
           f'\n- Reacting to {reaction_name}: {reaction_active}')
     await client.change_presence(activity=discord.Game(name="!geek - Jestem geekiem"))
 
+
 TARGET_USER_NAME = "phester102"
+
+
 # Obsługa wiadomości użytkowników
 @client.event
 async def on_presence_update(before: discord.Member, after: discord.Member):
@@ -177,17 +182,25 @@ async def on_presence_update(before: discord.Member, after: discord.Member):
         old_status = before.status
         new_status = after.status
 
-        # Reagujemy na przejście z offline na cokolwiek innego (online, idle, dnd)
         if old_status == discord.Status.offline and new_status != discord.Status.offline:
-            # Id kanału, na którym chcemy wysyłać powiadomienie
-            channel_id = 710042604720488520
+            channel_id = 1346496307023581274
 
             # Pobieramy kanał z kontekstu serwera (guild)
             channel = after.guild.get_channel(channel_id)
 
             if channel:
-                await channel.send(f"Użytkownik **{after.name}** jest teraz dostępny!")
+                embed = discord.Embed(
+                    title="ALARM!",
+                    description=f"Użytkownik **{after.name}** jest teraz dostępny!",
+                    color=discord.Color.red()
+                )
+                embed.set_image(url="https://media.discordapp.net/attachments/1346496307023581274/1346496972965679175/"
+                                    "2D0BF743-1673-4F01-B648-7FFBD12D6950.png?ex=67c86687&is=67c71507&hm=bf2f675228c76"
+                                    "d53ad74fd422679d6cc867073c5bec4698ee75abc09abdc1fad&=&format=webp&quality=lossless")
+                print(f"{TARGET_USER_NAME} is online!")
+                await channel.send(embed=embed)
 
+@client.event
 async def on_message(message):
     global reaction_active
     if message.author == client.user:
@@ -973,7 +986,8 @@ async def on_message(message):
                 ),
                 inline=False
             )
-            embed.set_image(url="https://media.discordapp.net/attachments/607581853880418366/1302050384184999978/image.png?ex=67c6e2aa&is=67c5912a&hm=a8b52b3437f22136b0436de0c4da302ed0ef8800f64757598c0fd0da3cd639c0&=&format=webp&quality=lossless&width=1437&height=772")
+            embed.set_image(
+                url="https://media.discordapp.net/attachments/607581853880418366/1302050384184999978/image.png?ex=67c6e2aa&is=67c5912a&hm=a8b52b3437f22136b0436de0c4da302ed0ef8800f64757598c0fd0da3cd639c0&=&format=webp&quality=lossless&width=1437&height=772")
 
         await message.channel.send(embed=embed)
 
