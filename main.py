@@ -5,8 +5,10 @@ import discord
 import requests
 import os
 import re
-from discord.ext import commands
+from discord.ext import commands, tasks
 import json
+import asyncio
+import datetime
 
 from twitch_utils import *
 from masny_utils import *
@@ -164,6 +166,7 @@ def save_reference_date(d: date):
 async def on_ready():
     # send_daily_stats(client)
     load_reaction_state()
+    daily_random_stan.start()
 
     print(f'\n{client.user} has connected to Discord!\n\n'
           f'\nOptions:'
@@ -1009,6 +1012,63 @@ async def on_message(message):
         )
         await message.channel.send(embed=embed)
 
+CHANNEL_ID = 1215010049622151298
+@tasks.loop(hours=24)
+async def daily_random_stan():
+
+    # 1. Wywołanie funkcji pobierającej dane z Kick
+    kick_data = get_kick_stream_data("JSwhy")
+
+    # 2. Pobranie obiektu kanału
+    channel = client.get_channel(CHANNEL_ID)
+    if not channel:
+        print(f"[DEBUG] Nie znaleziono kanału o ID={CHANNEL_ID}")
+        return
+
+    # 3. Wygenerowanie embeda z wynikami
+    current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")  # do opisu, by wiedzieć kiedy się wywołało
+    if not kick_data:
+        # Błąd w pobieraniu danych
+        embed = discord.Embed(
+            title="Stan streama Kick: JSwhy",
+            description=(
+                f"Nie można pobrać danych Kick dla kanału 'JSwhy'.\n"
+                f"Wywołano: {current_time}"
+            ),
+            color=discord.Color.red()
+        )
+    else:
+        embed = discord.Embed(
+            title=f"Stan streama Kick: JSwhy",
+            color=discord.Color.green()
+        )
+        embed.add_field(
+            name="Kanał Kick",
+            value="https://kick.com/JSwhy",
+            inline=False
+        )
+        embed.set_footer(text=f"Wywołano: {current_time}")
+
+        if kick_data['live']:
+            embed.description = (
+                f"**JSwhy** jest właśnie LIVE!\n"
+                f"**Tytuł:** {kick_data['title']}"
+            )
+            if kick_data['thumbnail_url']:
+                embed.set_image(url=kick_data['thumbnail_url'])
+        else:
+            embed.description = (
+                "**JSwhy** jest offline.\n"
+                f"Tytuł (ostatniej sesji / domyślny): {kick_data['title']}"
+            )
+
+    # 4. Wysyłamy embed do kanału
+    await channel.send(embed=embed)
+
+
+@daily_random_stan.before_loop
+async def before_daily_random_stan():
+    await client.wait_until_ready()
 
 # Uruchomienie bota
 client.run(DISCORD_TOKEN)
