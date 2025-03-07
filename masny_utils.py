@@ -40,6 +40,7 @@ def load_masny_data():
                 print(f"Error in reading line: {line}")
         print("Masny.txt loaded.")
 
+
 # Wczytanie danych przy starcie bota
 load_masny_data()
 
@@ -107,7 +108,6 @@ async def display_last_match_stats():
 
 
 def resetmasny():
-    load_masny_data()
     global masny_counter
     masny_counter = {key: 0 for key in masny_counter}  # Resetujemy licznik
     save_masny_data()  # Zapisujemy zerowane statystyki do pliku

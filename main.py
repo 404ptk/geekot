@@ -21,6 +21,7 @@ from kick_utils import *
 
 # TODO:
 # dodać wynik meczu przy !last (tzn. np 13:10)
+# dodać wynik komendy !dodajopis
 
 # Funkcja do wczytania tokena z pliku
 def load_token(filename):
@@ -161,20 +162,20 @@ def save_reference_date(d: date):
         f.write(d.isoformat())  # zapisze w formacie YYYY-MM-DD
 
 
+TARGET_USER_NAME = "phester102"
+
+
 # Obsługa zdarzenia - gdy bot jest gotowy
 @client.event
 async def on_ready():
     # send_daily_stats(client)
     load_reaction_state()
-    daily_random_stan.start()
 
     print(f'\n{client.user} has connected to Discord!\n\n'
           f'\nOptions:'
-          f'\n- Reacting to {reaction_name}: {reaction_active}')
+          f'\n- Reacting to {reaction_name}: {reaction_active}'
+          f'\n- Status checker on {TARGET_USER_NAME}')
     await client.change_presence(activity=discord.Game(name="!geek - Jestem geekiem"))
-
-
-TARGET_USER_NAME = "phester102"
 
 
 # Obsługa wiadomości użytkowników
@@ -202,6 +203,7 @@ async def on_presence_update(before: discord.Member, after: discord.Member):
                                     "d53ad74fd422679d6cc867073c5bec4698ee75abc09abdc1fad&=&format=webp&quality=lossless")
                 print(f"{TARGET_USER_NAME} is online!")
                 await channel.send(embed=embed)
+
 
 @client.event
 async def on_message(message):
@@ -1012,63 +1014,6 @@ async def on_message(message):
         )
         await message.channel.send(embed=embed)
 
-CHANNEL_ID = 1215010049622151298
-@tasks.loop(hours=24)
-async def daily_random_stan():
-
-    # 1. Wywołanie funkcji pobierającej dane z Kick
-    kick_data = get_kick_stream_data("JSwhy")
-
-    # 2. Pobranie obiektu kanału
-    channel = client.get_channel(CHANNEL_ID)
-    if not channel:
-        print(f"[DEBUG] Nie znaleziono kanału o ID={CHANNEL_ID}")
-        return
-
-    # 3. Wygenerowanie embeda z wynikami
-    current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")  # do opisu, by wiedzieć kiedy się wywołało
-    if not kick_data:
-        # Błąd w pobieraniu danych
-        embed = discord.Embed(
-            title="Stan streama Kick: JSwhy",
-            description=(
-                f"Nie można pobrać danych Kick dla kanału 'JSwhy'.\n"
-                f"Wywołano: {current_time}"
-            ),
-            color=discord.Color.red()
-        )
-    else:
-        embed = discord.Embed(
-            title=f"Stan streama Kick: JSwhy",
-            color=discord.Color.green()
-        )
-        embed.add_field(
-            name="Kanał Kick",
-            value="https://kick.com/JSwhy",
-            inline=False
-        )
-        embed.set_footer(text=f"Wywołano: {current_time}")
-
-        if kick_data['live']:
-            embed.description = (
-                f"**JSwhy** jest właśnie LIVE!\n"
-                f"**Tytuł:** {kick_data['title']}"
-            )
-            if kick_data['thumbnail_url']:
-                embed.set_image(url=kick_data['thumbnail_url'])
-        else:
-            embed.description = (
-                "**JSwhy** jest offline.\n"
-                f"Tytuł (ostatniej sesji / domyślny): {kick_data['title']}"
-            )
-
-    # 4. Wysyłamy embed do kanału
-    await channel.send(embed=embed)
-
-
-@daily_random_stan.before_loop
-async def before_daily_random_stan():
-    await client.wait_until_ready()
 
 # Uruchomienie bota
 client.run(DISCORD_TOKEN)
