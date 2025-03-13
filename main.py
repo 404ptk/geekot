@@ -9,6 +9,7 @@ from discord.ext import commands, tasks
 import json
 import asyncio
 import datetime
+from datetime import datetime, timedelta
 
 from twitch_utils import *
 from masny_utils import *
@@ -161,8 +162,45 @@ def save_reference_date(d: date):
     with open(REFERENCE_DATE_FILE, 'w', encoding="utf-8") as f:
         f.write(d.isoformat())  # zapisze w formacie YYYY-MM-DD
 
+STATS_FILE = "txt/user_stats.json"
+def load_stats():
+    try:
+        with open(STATS_FILE, "r") as file:
+            return json.load(file)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {}
+
+
+# Zapisanie statystyk do pliku
+def save_stats(stats):
+    with open(STATS_FILE, "w") as file:
+        json.dump(stats, file, indent=4)
+
 
 TARGET_USER_NAME = "phester102"
+user_connection_count = 0
+user_stats = load_stats()
+current_date = datetime.now().strftime("%Y-%m-%d")
+user_stats.setdefault(current_date, 0)
+save_stats(user_stats)
+
+
+async def reset_connection_count():
+    """Funkcja resetująca licznik o północy i zapisująca dane do pliku."""
+    global user_stats
+
+    while True:
+        now = datetime.now()
+        midnight = datetime.combine(now.date() + timedelta(days=1), datetime.min.time())
+        seconds_until_midnight = (midnight - now).total_seconds()
+
+        await asyncio.sleep(seconds_until_midnight)  # Czekamy do północy
+
+        # Aktualizacja daty i reset licznika na nowy dzień
+        current_date = datetime.now().strftime("%Y-%m-%d")
+        user_stats[current_date] = 0
+        save_stats(user_stats)
+        print("Statystyki zresetowane!")
 
 
 # Obsługa zdarzenia - gdy bot jest gotowy
@@ -177,32 +215,42 @@ async def on_ready():
           f'\n- Status checker on {TARGET_USER_NAME}')
     await client.change_presence(activity=discord.Game(name="!geek - Jestem geekiem"))
 
+    client.loop.create_task(reset_connection_count())
+
 
 # Obsługa wiadomości użytkowników
 @client.event
 async def on_presence_update(before: discord.Member, after: discord.Member):
-    # Sprawdzamy, czy dotyczy konkretnej osoby (np. phester102):
+    global user_stats
+    channel_id = 1346496307023581274
     if after.name == TARGET_USER_NAME:
         old_status = before.status
         new_status = after.status
 
         if old_status == discord.Status.offline and new_status != discord.Status.offline:
-            channel_id = 1346496307023581274
+            current_date = datetime.now().strftime("%Y-%m-%d")
+            user_stats[current_date] = user_stats.get(current_date, 0) + 1
+            save_stats(user_stats)
 
-            # Pobieramy kanał z kontekstu serwera (guild)
             channel = after.guild.get_channel(channel_id)
-
             if channel:
                 embed = discord.Embed(
                     title="ALARM!",
-                    description=f"Użytkownik **{after.name}** jest teraz dostępny!",
+                    description=f"Użytkownik **{after.name}** jest teraz dostępny!\n"
+                                f"To **{user_stats[current_date]}. połączenie** {TARGET_USER_NAME} dzisiaj!",
                     color=discord.Color.red()
                 )
                 embed.set_image(url="https://media.discordapp.net/attachments/1346496307023581274/1346496972965679175/"
                                     "2D0BF743-1673-4F01-B648-7FFBD12D6950.png?ex=67c86687&is=67c71507&hm=bf2f675228c76"
                                     "d53ad74fd422679d6cc867073c5bec4698ee75abc09abdc1fad&=&format=webp&quality=lossless")
-                print(f"{TARGET_USER_NAME} is online!")
+
+                print(f"{TARGET_USER_NAME} is online! To {user_stats[current_date]}. połączenie dziś.")
                 await channel.send(embed=embed)
+
+
+async def start_reset_task():
+    """Rozpoczyna asynchroniczny reset licznika statystyk co 24h."""
+    await reset_connection_count()
 
 
 @client.event
@@ -1014,6 +1062,16 @@ async def on_message(message):
         )
         await message.channel.send(embed=embed)
 
+    if message.content.startswith("!infoplaster"):
+        now = datetime.now()
+        last_7_days = [(now - timedelta(days=i)).strftime("%Y-%m-%d") for i in range(7)]
+
+        stats_message = "**Ostatnie 7 dni aktywności użytkownika:**\n"
+        for day in last_7_days:
+            count = user_stats.get(day, 0)
+            stats_message += f"📅 {day}: {count} połączeń\n"
+
+        await message.channel.send(stats_message)
 
 # Uruchomienie bota
 client.run(DISCORD_TOKEN)
