@@ -23,6 +23,7 @@ from kick_utils import *
 # TODO:
 # dodać wynik meczu przy !last (tzn. np 13:10)
 # dodać wynik komendy !dodajopis
+# dodać przechwytywanie https://x.com na https://fivx.com
 
 # Funkcja do wczytania tokena z pliku
 def load_token(filename):
@@ -262,6 +263,15 @@ async def on_message(message):
     if message.content.startswith('!'):
         if len(message.content) > 1:
             print(f'Uzytkownik {message.author} uzyl komendy {message.content}')
+
+    if "https://x.com/" in message.content:
+        pattern = r"https://x\.com/[\w\d_]+/status/\d+"
+        matches = re.findall(pattern, message.content)
+
+        if matches:
+            for link in matches:
+                fixed_link = link.replace("x.com", "fixvx.com")
+                await message.reply(f"{fixed_link}")
 
     if message.content.startswith('!plaster'):
         has_high_tier_guard = any(role.name.lower() == "high tier guard" for role in message.author.roles)
@@ -1066,7 +1076,7 @@ async def on_message(message):
         now = datetime.now()
         last_7_days = [(now - timedelta(days=i)).strftime("%Y-%m-%d") for i in range(7)]
 
-        stats_message = "**Ostatnie 7 dni aktywności użytkownika:**\n"
+        stats_message = f"**Ostatnie 7 dni aktywności użytkownika {TARGET_USER_NAME}:**\n"
         for day in last_7_days:
             count = user_stats.get(day, 0)
             stats_message += f"📅 {day}: {count} połączeń\n"
