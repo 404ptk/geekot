@@ -4,6 +4,7 @@ import requests
 def load_token(filename):
     try:
         with open(filename, 'r') as file:
+            print(f"{filename} loaded.")
             return file.read().strip()
     except FileNotFoundError:
         print(f"Plik {filename} nie został znaleziony. Upewnij się, że plik istnieje.")
@@ -14,7 +15,7 @@ def load_token(filename):
 
 
 KICK_CLIENT_ID = load_token('txt/kick_client_id.txt')
-KICK_SECRET_ID = load_token('txt/kick_secret_id.txt')
+KICK_SECRET_ID = load_token('txt/kick_client_secret.txt')
 
 
 def get_kick_access_token():
