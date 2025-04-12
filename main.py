@@ -21,9 +21,8 @@ from kick_utils import *
 
 
 # TODO:
-# dodać wynik meczu przy !last (tzn. np 13:10)
-# dodać wynik komendy !dodajopis
-# dodać przechwytywanie https://x.com na https://fivx.com
+#   dodać wynik meczu przy !last (tzn. np 13:10)
+#   dodac gambling ze statystykami plastra
 
 # Funkcja do wczytania tokena z pliku
 def load_token(filename):
@@ -164,43 +163,44 @@ def save_reference_date(d: date):
         f.write(d.isoformat())  # zapisze w formacie YYYY-MM-DD
 
 STATS_FILE = "txt/user_stats.json"
-def load_stats():
+STATS_HISTORY_FILE = "txt/user_stats_history.json"
+def load_json(file_path):
     try:
-        with open(STATS_FILE, "r") as file:
+        with open(file_path, "r") as file:
             return json.load(file)
     except (FileNotFoundError, json.JSONDecodeError):
         return {}
 
-
-# Zapisanie statystyk do pliku
-def save_stats(stats):
-    with open(STATS_FILE, "w") as file:
-        json.dump(stats, file, indent=4)
+def save_json(data, file_path):
+    with open(file_path, "w") as file:
+        json.dump(data, file, indent=4)
 
 
 TARGET_USER_NAME = "phester102"
 user_connection_count = 0
-user_stats = load_stats()
+user_stats = load_json(STATS_FILE)
+user_stats_history = load_json(STATS_HISTORY_FILE)
 current_date = datetime.now().strftime("%Y-%m-%d")
 user_stats.setdefault(current_date, 0)
-save_stats(user_stats)
+user_stats_history.setdefault(current_date, 0)
+save_json(user_stats, STATS_FILE)
+save_json(user_stats_history, STATS_HISTORY_FILE)
 
 
 async def reset_connection_count():
-    """Funkcja resetująca licznik o północy i zapisująca dane do pliku."""
-    global user_stats
+    global user_stats, user_stats_history
 
     while True:
         now = datetime.now()
         midnight = datetime.combine(now.date() + timedelta(days=1), datetime.min.time())
         seconds_until_midnight = (midnight - now).total_seconds()
+        await asyncio.sleep(seconds_until_midnight)
 
-        await asyncio.sleep(seconds_until_midnight)  # Czekamy do północy
-
-        # Aktualizacja daty i reset licznika na nowy dzień
         current_date = datetime.now().strftime("%Y-%m-%d")
         user_stats[current_date] = 0
-        save_stats(user_stats)
+        user_stats_history.setdefault(current_date, 0)
+        save_json(user_stats, STATS_FILE)
+        save_json(user_stats_history, STATS_HISTORY_FILE)
         print("Statystyki zresetowane!")
 
 
@@ -231,14 +231,16 @@ async def on_presence_update(before: discord.Member, after: discord.Member):
         if old_status == discord.Status.offline and new_status != discord.Status.offline:
             current_date = datetime.now().strftime("%Y-%m-%d")
             user_stats[current_date] = user_stats.get(current_date, 0) + 1
-            save_stats(user_stats)
+            user_stats_history[current_date] = user_stats_history.get(current_date, 0) + 1
+            save_json(user_stats, STATS_FILE)
+            save_json(user_stats_history, STATS_HISTORY_FILE)
 
             channel = after.guild.get_channel(channel_id)
             if channel:
                 embed = discord.Embed(
                     title="ALARM!",
                     description=f"Użytkownik **{after.name}** jest teraz dostępny!\n"
-                                f"To **{user_stats[current_date]}. połączenie** {TARGET_USER_NAME} dzisiaj!",
+                                f"To **{user_stats[current_date]}. połączenie** dzisiaj!",
                     color=discord.Color.red()
                 )
                 embed.set_image(url="https://media.discordapp.net/attachments/1346496307023581274/1346496972965679175/"
@@ -269,9 +271,18 @@ async def on_message(message):
         matches = re.findall(pattern, message.content)
 
         if matches:
+            # Usuń podgląd z oryginalnej wiadomości użytkownika
+            try:
+                await message.edit(suppress=True)  # Wyłącza wszystkie embedy
+            except discord.Forbidden:
+                print("Bot nie ma uprawnień do edycji wiadomości!")
+            except discord.HTTPException as e:
+                print(f"Błąd podczas edycji wiadomości: {e}")
+
+            # Wysyłanie poprawionych linków (bez suppress_embeds, jeśli chcesz, aby bot pokazywał podgląd)
             for link in matches:
                 fixed_link = link.replace("x.com", "fixvx.com")
-                await message.reply(f"{fixed_link}")
+                await message.reply(fixed_link)  # Tu możesz dodać suppress_embeds=False, jeśli chcesz
 
     if message.content.startswith('!plaster'):
         has_high_tier_guard = any(role.name.lower() == "high tier guard" for role in message.author.roles)
@@ -894,7 +905,7 @@ async def on_message(message):
 
         games[index]["description"] = opis
         save_games()
-        print(f"Added description to '{games[index['name']]}' game.")
+        print(f"Added description to '{games[index]['name']}' game.")
 
         embed = discord.Embed(
             title="Dodano opis",
@@ -984,7 +995,7 @@ async def on_message(message):
         stara_nazwa = games[index]["name"]
         games[index]["description"] = nowy_opis
         save_games()
-        print(f"Edited description of '{stara_nazwa['name']}' game.")
+        print(f"Edited description of '{stara_nazwa}' game.")
 
         embed = discord.Embed(
             title="Edytowano opis gry",
@@ -1072,16 +1083,73 @@ async def on_message(message):
         )
         await message.channel.send(embed=embed)
 
-    if message.content.startswith("!infoplaster"):
-        now = datetime.now()
-        last_7_days = [(now - timedelta(days=i)).strftime("%Y-%m-%d") for i in range(7)]
+    if message.content == "!infoplaster":
+        stats = load_json(STATS_FILE)
+        history = load_json(STATS_HISTORY_FILE)
 
-        stats_message = f"**Ostatnie 7 dni aktywności użytkownika {TARGET_USER_NAME}:**\n"
-        for day in last_7_days:
-            count = user_stats.get(day, 0)
-            stats_message += f"📅 {day}: {count} połączeń\n"
+        last_7_days = sorted(stats.items(), key=lambda x: x[0], reverse=True)[:7]
+        max_day = max(last_7_days, key=lambda x: x[1])
+        history_max = max(history.items(), key=lambda x: x[1])
 
-        await message.channel.send(stats_message)
+        dni_tygodnia = {
+            "Monday": "Poniedziałek",
+            "Tuesday": "Wtorek",
+            "Wednesday": "Środa",
+            "Thursday": "Czwartek",
+            "Friday": "Piątek",
+            "Saturday": "Sobota",
+            "Sunday": "Niedziela"
+        }
+
+        miesiace = {
+            "January": "stycznia",
+            "February": "lutego",
+            "March": "marca",
+            "April": "kwietnia",
+            "May": "maja",
+            "June": "czerwca",
+            "July": "lipca",
+            "August": "sierpnia",
+            "September": "września",
+            "October": "października",
+            "November": "listopada",
+            "December": "grudnia",
+        }
+
+        embed = discord.Embed(
+            title=f"📊 Statystyki połączeń: {TARGET_USER_NAME}",
+            color=discord.Color.green()
+        )
+
+        for day, count in last_7_days:
+            date_obj = datetime.strptime(day, "%Y-%m-%d")
+            weekday_en = date_obj.strftime("%A")
+            month_en = date_obj.strftime("%B")
+            weekday_pl = dni_tygodnia.get(weekday_en, weekday_en)
+            month_pl = miesiace.get(month_en, month_en)
+            day_str = f"{date_obj.day} {month_pl} ({weekday_pl})"
+            embed.add_field(name=day_str, value=f"→ {count} połączenia", inline=False)
+
+        embed.add_field(
+            name="📈 Najwięcej połączeń w ostatnim tygodniu",
+            value=f"{max_day[0]} – {max_day[1]} razy",
+            inline=False,
+        )
+        embed.add_field(
+            name="🏆 Najaktywniejszy dzień w historii *(od 2025-03-13)*",
+            value=f"{history_max[0]} – {history_max[1]} razy",
+            inline=False,
+        )
+
+        # Pobierz obiekt użytkownika
+        guild = message.guild
+        target_member = discord.utils.get(guild.members, name=TARGET_USER_NAME)
+
+        if target_member and target_member.avatar:
+            embed.set_thumbnail(url=target_member.avatar.url)
+
+        await message.channel.send(embed=embed)
+
 
 # Uruchomienie bota
 client.run(DISCORD_TOKEN)
