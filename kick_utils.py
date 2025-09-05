@@ -1,4 +1,5 @@
 import requests
+import json
 
 
 def load_token(filename):
@@ -44,36 +45,61 @@ def get_kick_access_token():
         return None
 
 
+import requests
+
 def get_kick_stream_data(username):
     """
     Funkcja sprawdza, czy kanał o danym username (slug) jest aktualnie live.
-    Zwraca słownik {live: bool, title: str, thumbnail_url: str lub None}.
-    Jeśli API Kick różni się polami, należy je dopasować.
+    Zwraca słownik z informacjami o transmisji.
     """
 
-    # Ustalony endpoint Kick (przykład):
     url = f"https://api.kichat.dev/api/v2/channels/{username}"
 
     try:
         response = requests.get(url)
         if response.status_code == 200:
             data = response.json()
-            livestream = data["livestream"]
-            is_live = livestream["is_live"]
-            title = livestream["session_title"]
-            thumbnail = livestream["thumbnail"]["url"]  # lub data.get('thumbnail_urls', {}).get('default')
+            livestream = data.get("livestream")
 
-            print(f"[DEBUG] is_live={is_live}, title={title}, thumbnail={thumbnail}")
+            if not livestream:
+                print("[DEBUG] Brak aktywnej transmisji.")
+                return {
+                    'live': False,
+                    'title': None,
+                    'thumbnail_url': None,
+                    'viewer_count': None,
+                    'viewers': None
+                }
+
+            is_live = livestream.get("is_live", False)
+            title = livestream.get("session_title", "Brak tytułu")
+            thumbnail = livestream.get("thumbnail", {}).get("url")
+            viewer_count = livestream.get("viewer_count", None)
+
+            # liczba wyświetleń kategorii (np. IRL): pierwsza kategoria
+            categories = livestream.get("categories", [])
+            viewers = categories[0].get("viewers") if categories else None
+
+            # print(f"[DEBUG] is_live={is_live}")
+            # print(f"[DEBUG] title={title}")
+            # print(f"[DEBUG] thumbnail_url={thumbnail}")
+            # print(f"[DEBUG] viewer_count={viewer_count}")
+            # print(f"[DEBUG] viewers (z kategorii)={viewers}")
 
             return {
                 'live': is_live,
                 'title': title,
-                'thumbnail_url': thumbnail
+                'thumbnail_url': thumbnail,
+                'viewer_count': viewer_count,
+                'viewers': viewers
             }
+
         else:
             print(f"[DEBUG] Błąd API Kick: {response.status_code}, {response.text}")
             return None
+
     except Exception as e:
         print(f"[DEBUG] Wyjątek w trakcie zapytania do Kick API: {e}")
         return None
+
 

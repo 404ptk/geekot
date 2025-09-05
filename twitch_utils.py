@@ -51,8 +51,14 @@ def get_twitch_stream_data(username):
         if data:  # Stream jest aktywny
             stream = data[0]
             thumbnail_url = stream['thumbnail_url'].replace('{width}', '1280').replace('{height}', '720')
-            return {'live': True, 'thumbnail_url': thumbnail_url, 'title': stream['title']}
-        else:  # Stream offline, pobieramy dane kanału
+            viewer_count = stream.get('viewer_count', 0)
+            return {
+                'live': True,
+                'thumbnail_url': thumbnail_url,
+                'title': stream['title'],
+                'viewer_count': viewer_count
+            }
+        else:  # Stream offline
             return get_twitch_channel_data(username, access_token)
     else:
         print(f"Błąd API Twitch: {response.status_code}")

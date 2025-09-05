@@ -2,6 +2,8 @@ import random
 from datetime import date
 
 import discord
+from discord import app_commands
+from discord.ext import commands
 import requests
 import os
 import re
@@ -10,11 +12,27 @@ import json
 import asyncio
 import datetime
 from datetime import datetime, timedelta
+import sys
+import threading
 
 from twitch_utils import *
 from masny_utils import *
 from faceit_utils import *
 from kick_utils import *
+from commands import games as games_module
+from commands import help as help_module
+from commands import excuses as excuses_module
+from commands import instants
+from commands import challenges as challenges_module
+from commands import twitch_kick
+from commands import mod as mod_module
+from commands import minecraft
+import faceit_utils
+import masny_utils
+from commands import football
+
+
+games_data = games_module.load_games()  # commands/games.py
 
 
 # from soundcloud_utils import *
@@ -22,7 +40,10 @@ from kick_utils import *
 
 # TODO:
 #   dodać wynik meczu przy !last (tzn. np 13:10)
-#   dodac gambling ze statystykami plastra
+#   pobawić się z api spotify
+#   !premier - raczej ciezkie do zrobienia
+#   sprawdzanie cen skrzynek z csa
+
 
 # Funkcja do wczytania tokena z pliku
 def load_token(filename):
@@ -49,44 +70,7 @@ intents = discord.Intents.default()
 intents.message_content = True
 intents.members = True
 intents.presences = True
-client = discord.Client(intents=intents)
-
-# Inicjalizacja listy wyzwań
-challenges = []
-
-# Plik do przechowywania wyzwań
-CHALLENGES_FILE = "txt/challenges.txt"
-
-
-# Funkcja do zapisywania wyzwań do pliku
-def save_challenges():
-    with open(CHALLENGES_FILE, "w", encoding="utf-8") as file:
-        for challenge in challenges:
-            file.write(challenge + "\n")
-
-
-# Funkcja do wczytywania wyzwań z pliku
-def load_challenges():
-    if os.path.exists(CHALLENGES_FILE):
-        with open(CHALLENGES_FILE, "r", encoding="utf-8") as file:
-            for line in file:
-                challenges.append(line.strip())
-        print("challenges.txt loaded.")
-    else:
-        # Domyślne wyzwania na start
-        default_challenges = [
-            "Zagraj rundę tylko z Deagle",
-            "Wygraj mecz bez kupowania granatów",
-            "Użyj tylko noża w jednej rundzie",
-            "Zabij 3 przeciwników z AWP w jednym meczu"
-        ]
-        print("Error in loading challenges.txt - Creating new file.")
-        challenges.extend(default_challenges)
-        save_challenges()
-
-
-# Wczytanie wyzwań przy starcie bota
-load_challenges()
+client = commands.Bot(command_prefix="!", intents=intents)
 
 reaction_name = "phester102"
 reaction_active = False
@@ -108,67 +92,29 @@ def load_reaction_state():
         reaction_active = False
         print("Error in reading reaction_state.json.")
 
+BETS_FILE = "txt/bets.json"
+def load_bets():
+    try:
+        with open(BETS_FILE, "r") as file:
+            print(f"{BETS_FILE} loaded.")
+            return json.load(file)
+    except (FileNotFoundError, json.JSONDecodeError):
+        print(f"Error in loading {BETS_FILE}. FileNotFoundError")
+        return {}
 
-GAMES_FILE = "txt/gry.json"
-games = []
-
-
-def load_games():
-    """Wczytuje listę gier z pliku JSON."""
-    if os.path.exists(GAMES_FILE):
-        with open(GAMES_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
-    else:
-        return []
-
-
-def save_games():
-    """Zapisuje listę gier do pliku JSON."""
-    with open(GAMES_FILE, "w", encoding="utf-8") as f:
-        json.dump(games, f, indent=4, ensure_ascii=False)
-
-
-# Wczytanie gier przy starcie bota
-games = load_games()
-
-REFERENCE_DATE_FILE = "txt/days_reference.txt"
-
-
-def load_reference_date():
-    """
-    Wczytuje datę odniesienia z pliku.
-    Jeżeli plik nie istnieje, tworzy go z domyślną datą 02.11.2024.
-    """
-    if not os.path.exists(REFERENCE_DATE_FILE):
-        # Tworzymy plik z domyślną datą 2024-11-02
-        with open(REFERENCE_DATE_FILE, 'w', encoding="utf-8") as f:
-            f.write("2024-11-02")
-            print("Error in loading days_reference.txt - Creating a new file.")
-        return date(2024, 11, 2)
-
-    else:
-        with open(REFERENCE_DATE_FILE, 'r', encoding="utf-8") as f:
-            date_str = f.read().strip()
-            # Zakładamy format YYYY-MM-DD (np. "2024-11-02")
-            year, month, day = date_str.split("-")
-            print("days_reference.txt loaded.")
-            return date(int(year), int(month), int(day))
-
-
-def save_reference_date(d: date):
-    """
-    Zapisuje przekazaną datę odniesienia do pliku.
-    """
-    with open(REFERENCE_DATE_FILE, 'w', encoding="utf-8") as f:
-        f.write(d.isoformat())  # zapisze w formacie YYYY-MM-DD
+def save_bets(bets):
+    with open(BETS_FILE, "w") as file:
+        json.dump(bets, file, indent=4)
 
 STATS_FILE = "txt/user_stats.json"
 STATS_HISTORY_FILE = "txt/user_stats_history.json"
 def load_json(file_path):
     try:
         with open(file_path, "r") as file:
+            print(f"{file_path} loaded.")
             return json.load(file)
     except (FileNotFoundError, json.JSONDecodeError):
+        print(f"Error in loading {file_path}. FileNotFoundError")
         return {}
 
 def save_json(data, file_path):
@@ -197,12 +143,130 @@ async def reset_connection_count():
         await asyncio.sleep(seconds_until_midnight)
 
         current_date = datetime.now().strftime("%Y-%m-%d")
+        previous_date = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
+
         user_stats[current_date] = 0
         user_stats_history.setdefault(current_date, 0)
         save_json(user_stats, STATS_FILE)
         save_json(user_stats_history, STATS_HISTORY_FILE)
         print("Statystyki zresetowane!")
 
+        channel = client.get_channel(1346496307023581274)
+
+        # Podsumowanie betów za wczoraj
+        bets = load_bets()
+        previous_day_bets = bets.get(previous_date, {})
+        actual_logins = user_stats_history.get(previous_date, 0)
+
+        if previous_day_bets and channel:
+            embed = discord.Embed(
+                title="🎲 Wyniki zakładów za wczoraj!",
+                description=f"Użytkownik **{TARGET_USER_NAME}** zalogował się **{actual_logins}** razy w dniu {previous_date}.",
+                color=discord.Color.purple()
+            )
+
+            bets_history = bets.get("bets", {})
+            closest_users = []  # Lista użytkowników z najbliższą różnicą
+            closest_difference = float('inf')  # Najmniejsza różnica
+            exact_match = False  # Flaga, aby wiedzieć, czy był dokładny traf
+            user_points = {}  # Słownik do przechowywania punktów użytkowników
+
+            # Zliczanie punktów na podstawie zakładów
+            for user_id, data in previous_day_bets.items():
+                difference = abs(actual_logins - data["guess"])
+                if difference == 0:
+                    result = 5  # Dokładne trafienie
+                    exact_match = True
+                elif difference < closest_difference:
+                    result = 3  # Najbliższe trafienie
+                    closest_users = [user_id]  # Zresetuj listę najbliższych użytkowników
+                    closest_difference = difference
+                elif difference == closest_difference:
+                    result = 3  # Dla użytkownika o tej samej różnicy
+                    closest_users.append(user_id)
+
+                # Dodanie wyniku do historii zakładu
+                record = {
+                    "date": previous_date,
+                    "value": data["guess"],
+                    "actual": actual_logins,
+                    "result": result
+                }
+                bets_history.setdefault(user_id, []).append(record)
+
+                # Zapisanie punktów użytkownika
+                user_points[user_id] = user_points.get(user_id, 0) + result
+
+            # Jeżeli nikt nie trafił dokładnie, przyznaj punkty dla najbliższych
+            if not exact_match and closest_users:
+                for user_id in previous_day_bets:
+                    if user_id in closest_users:
+                        bets_history[user_id][-1]["result"] = 3  # Najbliżsi dostają 3 punkty
+                    else:
+                        bets_history[user_id][-1]["result"] = -1  # Reszta dostaje -1
+
+            bets["bets"] = bets_history
+
+            embed.set_footer(text="Nowe zakłady na dzisiaj są już otwarte! 🔓")
+            await channel.send(embed=embed)
+
+            # Wyświetlenie punktów dla każdego użytkownika
+            points_message = "📝 Podsumowanie punktów za wczoraj:\n"
+            for user_id, points in user_points.items():
+                user = discord.utils.get(client.users, id=user_id)
+                username = user.name if user else f"Użytkownik {user_id}"  # Sprawdzamy czy użytkownik istnieje
+                points_message += f"{username}: **{points} punktów**\n"
+
+            # Wyświetlanie punktów w kanale
+            await channel.send(points_message)
+
+        # Zapowiedź na dzień następny
+        today_bets = bets.get(current_date, {})
+        if today_bets and channel:
+            preview = discord.Embed(
+                title=f"📢 Zakłady na {current_date} (dalsze obstawienia)",
+                description=f"Liczba użytkowników, którzy obstawili: **{len(today_bets)}**",
+                color=discord.Color.orange()
+            )
+            for user_id, data in today_bets.items():
+                preview.add_field(
+                    name=data["name"],
+                    value=f"Obstawiono: **{data['guess']}** połączeń",
+                    inline=False
+                )
+            await channel.send(embed=preview)
+
+        save_bets(bets)
+
+
+def polaczenie_label(count: int) -> str:
+    if count == 1:
+        return "połączenie"
+    elif 2 <= count <= 4:
+        return "połączenia"
+    else:
+        return "połączeń"
+
+GUILD_ID = 551503797067710504
+
+# Start a background listener that shuts down the bot when 'stop' is typed in the console
+
+def start_console_listener():
+    def _listen():
+        try:
+            for line in sys.stdin:
+                if line.strip().lower() == "stop":
+                    print("Console command 'stop' received. Shutting down bot...")
+                    try:
+                        fut = asyncio.run_coroutine_threadsafe(client.close(), client.loop)
+                        fut.result(timeout=10)
+                    except Exception as e:
+                        print(f"Error during shutdown: {e}")
+                    os._exit(0)
+        except Exception as e:
+            print(f"Console listener error: {e}")
+    t = threading.Thread(target=_listen, daemon=True)
+    t.start()
 
 # Obsługa zdarzenia - gdy bot jest gotowy
 @client.event
@@ -210,20 +274,31 @@ async def on_ready():
     # send_daily_stats(client)
     load_reaction_state()
 
+    await games_module.setup_games_commands(client, client.tree)
+    await excuses_module.setup_excuses_commands(client, client.tree, guild_id=GUILD_ID)
+    await minecraft.setup_minecraft_commands(client, client.tree, guild_id=GUILD_ID)
+    await help_module.setup_help_commands(client, client.tree, guild_id=GUILD_ID)
+    await instants.setup_instants_commands(client, client.tree, guild_id=GUILD_ID)
+    await twitch_kick.setup_twitch_kick_commands(client, client.tree, guild_id=551503797067710504)
+    await challenges_module.setup_challenges_commands(client, client.tree, guild_id=GUILD_ID)
+    await mod_module.setup_mod_commands(client, client.tree, guild_id=GUILD_ID)
+    await faceit_utils.setup_faceit_commands(client, client.tree, guild_id=GUILD_ID)
+    await masny_utils.setup_masny_commands(client, client.tree, guild_id=GUILD_ID)
+    await football.setup_football_commands(client, client.tree, guild_id=GUILD_ID)
+
     print(f'\n{client.user} has connected to Discord!\n\n'
           f'\nOptions:'
           f'\n- Reacting to {reaction_name}: {reaction_active}'
           f'\n- Status checker on {TARGET_USER_NAME}')
-    await client.change_presence(activity=discord.Game(name="!geek - Jestem geekiem"))
+    await client.change_presence(activity=discord.Game(name="/geek - Jestem geekiem"))
 
-    client.loop.create_task(reset_connection_count())
+    # client.loop.create_task(reset_connection_count())
 
-
+channel_id = 1346496307023581274  # anty-plaster
 # Obsługa wiadomości użytkowników
 @client.event
 async def on_presence_update(before: discord.Member, after: discord.Member):
     global user_stats
-    channel_id = 1346496307023581274
     if after.name == TARGET_USER_NAME:
         old_status = before.status
         new_status = after.status
@@ -251,9 +326,9 @@ async def on_presence_update(before: discord.Member, after: discord.Member):
                 await channel.send(embed=embed)
 
 
-async def start_reset_task():
-    """Rozpoczyna asynchroniczny reset licznika statystyk co 24h."""
-    await reset_connection_count()
+# async def start_reset_task():
+#     """Rozpoczyna asynchroniczny reset licznika statystyk co 24h."""
+#     await reset_connection_count()
 
 
 @client.event
@@ -261,10 +336,6 @@ async def on_message(message):
     global reaction_active
     if message.author == client.user:
         return
-
-    if message.content.startswith('!'):
-        if len(message.content) > 1:
-            print(f'Uzytkownik {message.author} uzyl komendy {message.content}')
 
     if "https://x.com/" in message.content:
         pattern = r"https://x\.com/[\w\d_]+/status/\d+"
@@ -305,151 +376,32 @@ async def on_message(message):
     if reaction_active and message.author.name.lower() == reaction_name:
         await message.add_reaction("🥶")
 
-    if message.content.startswith(('!geek', '!pomoc', '!help')):
-        embed = discord.Embed(
-            title="📜 Dostępne komendy",
-            description="Lista komend dostępnych na serwerze:",
-            color=discord.Color.blue()
-        )
-
-        embed.add_field(name="🎮 **Faceit**", value="`!faceit [nick]` - Statystyki profilu [nick]\n"
-                                                   "`!discordfaceit` - Statystyki discorda na Faceicie\n"
-                                                   "`!last [nick]` - Statystyki drużyny gracza w ostatnim meczu",
-                        inline=False)
-
-        embed.add_field(name="📊 **Tabela Masnego**", value="`!masny` - Tabela Masnego\n"
-                                                           "`!masny [1-5]` - Zajęte miejsce w tabeli\n"
-                                                           "`!masny -1` - Odejmowanie miejsca 1 w tabeli\n"
-                                                           "`!resetmasny` - Resetowanie tabeli", inline=False)
-
-        embed.add_field(name="🎭 **Wymówki Masnego**", value="`!dodajwymowke` - Dodawanie wymówek\n"
-                                                            "`!losujwymowke` - Losowanie wymówek\n"
-                                                            "`!usunwymowke [nr]` - Usuń wymówke z listy\n"
-                                                            "`!wymowki` - Lista wymówek", inline=False)
-
-        embed.add_field(name="🚀 **Spawn Masnego**", value="`!spawn` - Spawn Masnego\n"
-                                                          "`!spawn [godzina]` - Można wpisać np. `!spawn 16`",
-                        inline=False)
-        embed.add_field(name="🎥 **Stan streamera**", value="`!stan [kick/twitch] [H2P_Gucio]` - "
-                                                           "Pokazuje ostatnią/aktualną klatkę ze streama", inline=False)
-
-        embed.add_field(name="🎯 **CS2 Instanty**", value="`!instant` - Lista dostępnych instantów (CS2)", inline=False)
-
-        embed.add_field(name="🔥 **Wyzwania CS2**",
-                        value="`!wyzwanie` - Losuje wyzwanie z listy challengów\n"
-                              "`!dodajwyzwanie` - Dodaj wyzwanie do listy challengów\n"
-                              "`!usunwyzwanie [nr]` - Usuń wyzwanie z listy\n"
-                              "`!wyzwania` - Lista dostępnych challengów", inline=False)
-
-        embed.add_field(name="🎮 **Gry do zagrania**",
-                        value="`!gry` - Lista gier\n"
-                              "`!dodajgre [nazwa]` - Dodaj gre do listy\n"
-                              "`!dodajopis [nr] [opis]` - Dodaj opis gry\n"
-                              "`!edytujopis [nr] [opis]` - Edytuj opis gry\n"
-                              "`!usungre [nr]` - Usuń gre z listy")
-
-        embed.set_footer(text="Geekot - Jestem geekiem, największym geekiem 🎮")
-
-        await message.channel.send(embed=embed)
-
-    # Komenda !losujwymowke
-    if message.content.startswith('!losujwymowke'):
-        wymowka = random.choice(wymowki)  # Losowy wybór wymówki z listy
-        await message.channel.send(f"Wymówka masnego: {wymowka}")
-
-    # Komenda !dodajwymowke <tekst>
-    if message.content.startswith('!dodajwymowke'):
-        parts = message.content.split(" ", 1)
-        if len(parts) < 2:
-            await message.channel.send(
-                "Podaj tekst wymówki, np. `!dodajwymowke za tluste lapy.` **(BEZ POLSKICH ZNAKÓW)**")
-        else:
-            nowa_wymowka = parts[1].strip()
-            wymowki.append(nowa_wymowka)  # Dodanie nowej wymówki do listy
-            save_wymowki()  # Zapisanie nowej wymówki do pliku
-            await message.channel.send(f"Dodano nową wymówkę: {nowa_wymowka}")
-
-    # Komenda !wymowki i !usunwymowke - wyświetlanie i usuwanie wymówek
-    if message.content.startswith('!wymowki') or message.content.startswith('!usunwymowke'):
-        if message.content.startswith('!usunwymowke'):
-            parts = message.content.split()
-            if len(parts) < 2 or not parts[1].isdigit():
-                embed = discord.Embed(
-                    title="⚠️ Błąd",
-                    description="Podaj numer wymówki do usunięcia, np. `!usunwymowke 2`",
-                    color=discord.Color.red()
-                )
-                await message.channel.send(embed=embed)
-            else:
-                index = int(parts[1]) - 1  # Konwersja na indeks (numeracja od 1)
-                if 0 <= index < len(wymowki):
-                    removed_wymowka = wymowki.pop(index)  # Usunięcie wymówki
-                    save_wymowki()  # Aktualizacja pliku
-                    embed = discord.Embed(
-                        title="✅ Wymówka usunięta",
-                        description=f"Usunięto: **{removed_wymowka}**",
-                        color=discord.Color.green()
-                    )
-                    embed.set_footer(text="Sprawdź listę za pomocą `!wymowki`")
-                    await message.channel.send(embed=embed)
-                else:
-                    embed = discord.Embed(
-                        title="⚠️ Błąd",
-                        description=f"Nieprawidłowy numer. Wpisz numer od 1 do {len(wymowki)}",
-                        color=discord.Color.red()
-                    )
-                    await message.channel.send(embed=embed)
-        else:  # !wymowki
-            if not wymowki:
-                embed = discord.Embed(
-                    title="🎭 Lista wymówek Masnego",
-                    description="Brak zapisanych wymówek. Dodaj jedną za pomocą `!dodajwymowke`!",
-                    color=discord.Color.red()
-                )
-                embed.set_footer(text="Zapisz wymówki Masnego!")
-                await message.channel.send(embed=embed)
-            else:
-                wymowki_list = "\n".join(f"{i + 1}. {wymowka}" for i, wymowka in enumerate(wymowki))
-                embed = discord.Embed(
-                    title="🎭 Lista wymówek Masnego",
-                    description=f"Oto wszystkie zapisane wymówki:\n{wymowki_list}",
-                    color=discord.Color.purple()
-                )
-                embed.set_footer(text=f"Liczba wymówek: {len(wymowki)} | Losuj jedną za pomocą `!losujwymowke`")
-                await message.channel.send(embed=embed)
-
-    # Komenda !instant
-    if message.content.startswith("!instant"):
-        await message.channel.send("Dostępne mapy:\n"
-                                   "- !mirage\n"
-                                   "- !anubis\n"
-                                   "- !ancient")
-
-    # Komenda !ancient
-    if message.content.startswith('!ancient'):
-        image_url_ancient_t_spawn = "https://cdn.discordapp.com/attachments/809156611167748176/1340790953237151754/ancient_instant_mid_smokes.png?ex=67b3a461&is=67b252e1&hm=d51938f2610cb3ea9c4947000d0bc636d3633f99749b0e193f00d563eb4962e4&"
-        image_url_ancient_ct_spawn = "https://cdn.discordapp.com/attachments/809156611167748176/1340790762635399198/ancient_instant_elbow_smokes.png?ex=67b3a434&is=67b252b4&hm=5a3b52d428f353172ce9603d9b0d8dfeab40722f211eeae22705bc1f0697bad2&"
-        await message.channel.send("Instant smokes mid from T spawn")
-        await message.channel.send(image_url_ancient_t_spawn)
-        await message.channel.send("Instant smokes elbow from CT spawn")
-        await message.channel.send(image_url_ancient_ct_spawn)
-
-    # Komenda !mirage
-    if message.content.startswith('!mirage'):
-        image_url_mirage_t_spawn = "https://cdn.discordapp.com/attachments/809156611167748176/1340791024842309652/mirage_instant_smokes.png?ex=67b3a473&is=67b252f3&hm=addbb5838df74336b88b20d87655daeba80429fad8fa2163721fa0423228e3e0&"
-        await message.channel.send("Instant smokes mid from T spawn")
-        await message.channel.send(image_url_mirage_t_spawn)
-
-    # Komenda !anubis
-    if message.content.startswith('!anubis'):
-        image_url_anubis_ct_spawn = "https://cdn.discordapp.com/attachments/1301248598108798996/1340782160701030474/image.png?ex=67b39c31&is=67b24ab1&hm=38bd2843da71955749891f1659c81b48c60287c306bf94abdb1adc06a5a2def0&"
-        await message.channel.send("Instant smokes mid from CT spawn")
-        await message.channel.send(image_url_anubis_ct_spawn)
-
-    # Komenda !discordfaceit do wyświetlania statystyk
-    if message.content.startswith('!discordfaceit'):
-        embed = await get_discordfaceit_stats()
-        await message.channel.send(embed=embed)
+    if message.content.startswith('!guildsync'):
+        if message.author.id != 443406275716579348:  # OWNER_ID from mod.py
+            await message.channel.send("❌ Nie masz uprawnień do synchronizacji komend.", delete_after=5)
+            return
+            
+        try:
+            guild = discord.Object(id=message.guild.id)
+            synced = await client.tree.sync(guild=guild)
+            await message.channel.send(f"✅ Zsynchronizowano {len(synced)} komend slash dla tego serwera.")
+            print(f"Zsynchronizowano {len(synced)} komend dla serwera {message.guild.name}")
+        except Exception as e:
+            await message.channel.send(f"❌ Błąd synchronizacji: {e}")
+            
+    if message.content.startswith('!clearcmds'):
+        if message.author.id != 443406275716579348:  # OWNER_ID from mod.py
+            await message.channel.send("❌ Nie masz uprawnień do tej operacji.", delete_after=5)
+            return
+            
+        try:
+            guild = discord.Object(id=message.guild.id)
+            client.tree.clear_commands(guild=guild)
+            await client.tree.sync(guild=guild)
+            await message.channel.send("✅ Wyczyszczono komendy slash dla tego serwera.")
+            print(f"Wyczyszczono komendy dla serwera {message.guild.name}")
+        except Exception as e:
+            await message.channel.send(f"❌ Błąd podczas czyszczenia komend: {e}")
 
     if message.content.startswith('!spawn'):
         user_id = 606785554918539275  # ID użytkownika mansy_
@@ -469,627 +421,16 @@ async def on_message(message):
                 await message.channel.send(f"Klucha, wołają cię na csa o {args[1]}:00 {user.mention}")
             else:
                 # Jeśli podano niepoprawny format
-                await message.channel.send("Niepoprawny format - poprawny: !spawn 16:00 lub !spawn 16")
+                await message.channel.send(f"Klucha wbijaj na csa potrzebujemy cie w naszym składzie {user.mention}")
 
-    # Komenda do pobierania danych z Faceit
-
-    if message.content.startswith('!faceit'):
-        parts = message.content.split()
-        if len(parts) < 2:
-            await message.channel.send('Podaj nick gracza Faceit, np. `!faceit Nick`')
-            return
-
-        nickname = parts[1]
-        player_data = get_faceit_player_data(nickname)
-        if player_data is None:
-            await message.channel.send(f'Nie znaleziono gracza o nicku {nickname} na Faceit.')
-            return
-
-        player_id = player_data['player_id']
-        player_nickname = player_data['nickname']
-        matches = get_faceit_player_matches(player_id)
-        if matches is None:
-            await message.channel.send(f'Nie udało się pobrać danych o meczach gracza {player_nickname}.')
-            return
-
-        player_level = player_data.get('games', {}).get('cs2', {}).get('skill_level', "Brak danych")
-        player_elo = player_data.get('games', {}).get('cs2', {}).get('faceit_elo', 'Brak danych')
-
-        avatar_url = player_data.get('avatar', 'https://www.faceit.com/static/img/avatar.png')
-
-        embed = discord.Embed(
-            title=f'{player_nickname}',
-            description=f'**LVL:** {player_level} | **ELO:** {player_elo}',
-            color=discord.Color.orange()
-        )
-        embed.set_thumbnail(url=avatar_url)
-        embed.add_field(
-            name="",
-            value=f"[🔗 Profil](https://faceit.com/pl/players/{player_nickname})",
-            inline=False
-        )
-
-        total_kills, total_deaths, total_assists, total_hs, total_wins, total_adr = 0, 0, 0, 0, 0, 0
-        match_count = len(matches)
-
-        match_summary = "```"
-        match_summary += f"{'🗺 Mapa'.ljust(10)} {'📊 Wynik'.ljust(8)} {'🔪 K/D/A'.ljust(8)} {'🎯 HS'.ljust(5)} {'ADR'}\n"
-        match_summary += "-" * 40 + "\n"
-
-        for match in matches:
-            map_name = match.get('stats', {}).get('Map', 'Nieznana').replace('de_', '')
-            result = match.get('stats', {}).get('Result', 'Brak danych')
-
-            if result == '1':
-                result_display = '✅'
-                total_wins += 1
-            elif result == '0':
-                result_display = '❌'
-            else:
-                result_display = '❓'
-
-            kills = int(match.get('stats', {}).get('Kills', 0))
-            deaths = int(match.get('stats', {}).get('Deaths', 0))
-            assists = int(match.get('stats', {}).get('Assists', 0))
-            hs = int(match.get('stats', {}).get('Headshots %', 0))
-            adr = float(match.get('stats', {}).get('ADR', 0))
-
-            total_kills += kills
-            total_deaths += deaths
-            total_assists += assists
-            total_hs += hs
-            total_adr += adr
-
-            match_summary += f"{map_name.ljust(15)} {result_display.ljust(5)} {f'{kills}/{deaths}/{assists}'.ljust(9)} {f'{hs}%'.ljust(5)} {adr:.0f}\n"
-
-        match_summary += "```"
-
-        embed.add_field(
-            name="🎮 Ostatnie 5 meczów",
-            value=match_summary if match_summary else "Brak danych",
-            inline=False
-        )
-
-        avg_kills = int(total_kills / match_count) if match_count > 0 else 0
-        avg_deaths = int(total_deaths / match_count) if match_count > 0 else 0
-        avg_assists = int(total_assists / match_count) if match_count > 0 else 0
-        avg_hs = total_hs / match_count if match_count > 0 else 0
-        win_percentage = (total_wins / match_count) * 100 if match_count > 0 else 0
-        avg_kd = float(avg_kills / avg_deaths) if match_count > 0 and avg_deaths > 0 else 0
-        avg_adr = float(total_adr / match_count) if match_count > 0 else 0
-
-        embed.add_field(
-            name="📊 Średnie statystyki",
-            value=f"**K/D:** {avg_kd:.2f} | **HS:** {avg_hs:.0f}% | **ADR:** {avg_adr:.1f}\n**Winrate:** {win_percentage:.0f}%",
-            inline=False
-        )
-
-        await message.channel.send(embed=embed)
-
-    # Słownik z linkami do zdjęć w zależności od zajętego miejsca
-    image_links = {
-        "1": "https://cdn.discordapp.com/attachments/809156611167748176/1330901097816129596/BE8227A4-FD7F-42E4-A48F-350CD124D92B.png?ex=678fa9bc&is=678e583c&hm=ac937a4d34a9375cc56fefdbb1d228733a3fdf0daaaa720e5a020ecd302a878e&",
-        "2": "https://cdn.discordapp.com/attachments/809156611167748176/1330905145772474428/61A0B076-BD51-400C-AF19-A7B1D626B1B1.png?ex=678fad81&is=678e5c01&hm=6f06532e17ca3e49d550adc2cf84ff19f80b91e5b7b8833c7c7dc54061f40882&",
-        "3": "https://cdn.discordapp.com/attachments/809156611167748176/1330911802049036340/2698389E-237A-4840-8A63-07F996640858.png?ex=678fb3b4&is=678e6234&hm=4870f7636f0053600f02e59e2c9332c5c0272d04e8cb25d25ad643c6f2947739&",
-        "4": "https://media.discordapp.net/attachments/778302928338550865/1300471813146415176/B4B5C4D4-8E00-43CE-927B-E9CC47FB2201.png?ex=678fb441&is=678e62c1&hm=661a9436fdf6bbe526df0afa62a28adf1ae8a4dbca4dab0f333d4a4c059d9a0d&=&format=webp&quality=lossless&width=359&height=601",
-        "5": "https://cdn.discordapp.com/attachments/809156611167748176/1330906894302318592/pobrane_1.gif?ex=678faf22&is=678e5da2&hm=908f4934957c128b1531edc28da1820b096fd8a1bd35358621e794336969884e&"
-    }
-
-    if message.content.startswith('!masny'):
-        load_masny_data()
-        parts = message.content.split()
-
-        # Obsługa komendy w formacie "!masny X", gdzie X to liczba od 1 do 5
-        if len(parts) == 2 and parts[1] in masny_counter:
-            masny_counter[parts[1]] += 1
-            save_masny_data()  # Zapisanie stanu po każdej zmianie
-            print(f"Masny took {masny_counter[parts[1]]} place on faceit.")
-            # Pobranie tabeli z ostatniego meczu -Masny-
-            last_match_stats = await display_last_match_stats()
-
-            # Wybór odpowiedniego zdjęcia na podstawie wybranego miejsca
-            image_url = image_links.get(parts[1],
-                                        "https://cdn.discordapp.com/avatars/606785554918539275/f9528561e91c8c742e6b45ddcf9dd82c.png?size=1024")
-
-            embed = discord.Embed(
-                title=f"🏆 Masny zajął {parts[1]} miejsce!",
-                color=discord.Color.gold()
-            )
-            embed.set_image(url=image_url)
-            embed.add_field(name="📊 Statystyki ostatniego meczu", value=last_match_stats, inline=False)
-
-            await message.channel.send(embed=embed)
-
-        # Obsługa komendy w formacie "!masny -X", gdzie X to liczba od 1 do 5 (usunięcie miejsca)
-        elif len(parts) == 2 and parts[1].startswith('-') and parts[1][1:] in masny_counter:
-            place = parts[1][1:]
-            if masny_counter[place] > 0:
-                masny_counter[place] -= 1
-                save_masny_data()  # Zapisanie stanu po każdej zmianie
-                print(f"Removed one place from {place} place in masny list.")
-                embed = discord.Embed(
-                    title="📉 Aktualizacja tabeli Masnego",
-                    description=f"Miejsce **{place}** zostało zmniejszone o 1.",
-                    color=discord.Color.red()
-                )
-                await message.channel.send(embed=embed)
-            else:
-                embed = discord.Embed(
-                    title="⚠️ Błąd",
-                    description=f"Miejsce **{place}** jest już na zerze i nie można go dalej zmniejszać.",
-                    color=discord.Color.red()
-                )
-                await message.channel.send(embed=embed)
-
-        # Jeśli komenda to tylko "!masny" - wyświetl statystyki
-        elif len(parts) == 1:
-            total_counts = sum(masny_counter.values())
-
-            # Wyznaczanie średniego miejsca
-            if total_counts > 0:
-                weighted_sum = sum(int(key) * count for key, count in masny_counter.items())
-                avg_position = weighted_sum / total_counts
-            else:
-                avg_position = 0
-
-            # Wyznaczanie najczęściej zajmowanego miejsca (zaokrąglone do najbliższej liczby całkowitej)
-            if total_counts > 0:
-                # rounded_avg = round(avg_position)
-                most_common_position = max(masny_counter, key=masny_counter.get)
-            else:
-                most_common_position = None
-                # rounded_avg = None
-
-            # Budowanie embed z wynikami
-            embed = discord.Embed(
-                title="📊 Miejsca w tabeli Masnego",
-                color=discord.Color.blue()
-            )
-
-            for key in sorted(masny_counter.keys()):  # Sortujemy klucze miejsc od 1 do 5
-                count = masny_counter[key]
-                percent = (count / total_counts) * 100 if total_counts > 0 else 0
-                embed.add_field(name=f"🏅 **{key} miejsce**", value=f"{count} razy *({percent:.2f}%)*", inline=False)
-
-            # Dodanie informacji o średnim miejscu i najczęściej zajmowanym miejscu
-            embed.add_field(name="\n", value="", inline=False)
-            embed.add_field(name="📉 Średnie miejsce", value=f"**{avg_position:.2f}**", inline=False)
-            embed.add_field(name="📌 Masny najczęściej zajmuje", value=f"**{most_common_position}** miejsce",
-                            inline=False)
-            embed.add_field(name="\n", value="", inline=False)
-
-            embed.set_footer(text="Aby dopisać miejsce Masnego w tabeli wpisz `!masny [miejsce]`")
-
-            await message.channel.send(embed=embed)
-
-    if message.content.startswith('!stan '):
-        parts = message.content.split()
-        # parts[0] => "!stan"
-        # parts[1] => platforma (twitch/kick)
-        # parts[2] => username
-
-        if len(parts) < 3:
-            await message.channel.send(
-                "Użycie: `!stan [twitch/kick] [nazwa_użytkownika]`\n"
-                "Np: `!stan twitch Jankos` lub `!stan kick some_streamer`"
-            )
-            return
-
-        platform = parts[1].lower()  # "twitch" lub "kick"
-        username = parts[2]
-
-        if platform == "twitch":
-            # Wywołujemy funkcję pobierającą dane z Twitcha
-            stream_data = get_twitch_stream_data(username)
-
-            if stream_data is None:
-                await message.channel.send(f"Nie udało się pobrać danych z Twitcha dla użytkownika {username}.")
-                return
-
-            # Tworzymy embed
-            embed = discord.Embed(
-                title=f"Stan streama Twitch: {username}",
-                color=discord.Color.purple()
-            )
-            if stream_data['live']:
-                embed.description = f"**{username} jest na żywo!**\n*{stream_data['title']}*"
-                embed.set_image(url=stream_data['thumbnail_url'])
-            else:
-                embed.description = f"**{username} jest offline.**"
-                if stream_data['thumbnail_url']:
-                    embed.set_image(url=stream_data['thumbnail_url'])
-                else:
-                    embed.set_image(url="https://static-cdn.jtvnw.net/ttv-static/404_preview-1280x720.jpg")
-
-            embed.add_field(
-                name="Kanał Twitch",
-                value=f"[{username}](https://twitch.tv/{username})",
-                inline=False
-            )
-            await message.channel.send(embed=embed)
-
-        elif platform == "kick":
-            # Wywołujemy funkcję pobierającą dane z Kick
-            kick_data = get_kick_stream_data(username)
-
-            if not kick_data:
-                await message.channel.send(f"Nie można pobrać danych Kick dla kanału '{username}'.")
-            else:
-                # Możesz również zbudować embed, aby zachować spójność stylu:
-                embed = discord.Embed(
-                    title=f"Stan streama Kick: {username}",
-                    color=discord.Color.green()
-                )
-                if kick_data['live']:
-                    embed.description = f"**{username}** jest właśnie LIVE!\n*{kick_data['title']}*"
-                    if kick_data['thumbnail_url']:
-                        embed.set_image(url=kick_data['thumbnail_url'])
-                else:
-                    embed.description = f"**{username}** jest offline.\n" \
-                                        f"Tytuł (ostatniej sesji / domyślny): {kick_data['title']}"
-                embed.add_field(
-                    name="Kanał Kick",
-                    value=f"https://kick.com/{username}",
-                    inline=False
-                )
-                await message.channel.send(embed=embed)
-        else:
-            # Podano inną platformę
-            await message.channel.send(
-                f"Nierozpoznana platforma `{platform}`. Wybierz `twitch` lub `kick`."
-            )
-
-    # Komenda !wyzwania i !usunwyzwanie - wyświetlanie i usuwanie wyzwań
-    if message.content.startswith('!wyzwanie') or message.content.startswith('!usunwyzwanie'):
-        if message.content.startswith('!usunwyzwanie'):
-            parts = message.content.split()
-            if len(parts) < 2 or not parts[1].isdigit():
-                embed = discord.Embed(
-                    title="⚠️ Błąd",
-                    description="Podaj numer wyzwania do usunięcia, np. `!usunwyzwanie 2`",
-                    color=discord.Color.red()
-                )
-                await message.channel.send(embed=embed)
-            else:
-                index = int(parts[1]) - 1  # Konwersja na indeks (numeracja od 1)
-                if 0 <= index < len(challenges):
-                    removed_challenge = challenges.pop(index)  # Usunięcie wyzwania
-                    save_challenges()  # Aktualizacja pliku
-                    print(f"Deleted challenge '{removed_challenge}' from list.")
-                    embed = discord.Embed(
-                        title="✅ Wyzwanie usunięte",
-                        description=f"Usunięto: **{removed_challenge}**",
-                        color=discord.Color.green()
-                    )
-                    embed.set_footer(text="Sprawdź listę za pomocą `!wyzwania`")
-                    await message.channel.send(embed=embed)
-                else:
-                    embed = discord.Embed(
-                        title="⚠️ Błąd",
-                        description=f"Nieprawidłowy numer. Wpisz numer od 1 do {len(challenges)}",
-                        color=discord.Color.red()
-                    )
-                    await message.channel.send(embed=embed)
-        else:  # !wyzwania
-            if not challenges:
-                embed = discord.Embed(
-                    title="📋 Lista wyzwań CS2",
-                    description="Brak zapisanych wyzwań. Dodaj jedno za pomocą `!dodajwyzwanie`!",
-                    color=discord.Color.red()
-                )
-                embed.set_footer(text="Stwórz swoje wyzwanie!")
-                await message.channel.send(embed=embed)
-            else:
-                challenge = random.choice(challenges)
-                embed = discord.Embed(
-                    title="🎯 Twoje wyzwanie CS2",
-                    description=f"**{challenge}**",
-                    color=discord.Color.green()
-                )
-                embed.set_footer(text="Dodaj własne wyzwanie za pomocą `!dodajwyzwanie`\nPowodzenia!")
-                await message.channel.send(embed=embed)
-
-    # Komenda !addchallenge - dodawanie nowego wyzwania
-    if message.content.startswith('!dodajwyzwanie'):
-        parts = message.content.split(" ", 1)
-        if len(parts) < 2:
-            await message.channel.send("Podaj treść wyzwania, np. `!dodajwyzwanie Zagraj tylko z nożem`")
-        else:
-            new_challenge = parts[1].strip()
-            challenges.append(new_challenge)
-            save_challenges()  # Zapisanie do pliku
-            embed = discord.Embed(
-                title="✅ Nowe wyzwanie dodane!",
-                description=f"Dodałeś: **{new_challenge}**",
-                color=discord.Color.green()
-            )
-            embed.set_footer(text="Spróbuj je wylosować za pomocą `!wyzwanie`")
-            print(f"Added challenge '{new_challenge}' to list.")
-            await message.channel.send(embed=embed)
-
-    # Komenda !challenges - wyświetlanie listy wszystkich wyzwań
-    if message.content.startswith('!wyzwania'):
-        if not challenges:
-            await message.channel.send("Brak zapisanych wyzwań. Dodaj jedno za pomocą `!dodajwyzwanie`!")
-        else:
-            challenges_list = "\n".join(f"{i + 1}. {challenge}" for i, challenge in enumerate(challenges))
-            embed = discord.Embed(
-                title="📋 Lista wyzwań CS2",
-                description=f"Oto dostępne wyzwania:\n{challenges_list}",
-                color=discord.Color.orange()
-            )
-            embed.set_footer(text="Użyj `!wyzwanie`, aby wylosować jedno z nich!")
-            await message.channel.send(embed=embed)
-
-    # if message.content.startswith("!track_stats"):
-    #     await send_track_stats(message)
-
-    if message.content.startswith('!last'):
-        parts = message.content.split()
-        if len(parts) < 2:
-            await message.channel.send("❌ Musisz podać nick gracza! Użycie: `!last <nickname>`")
-            return
-
-        nickname = parts[1]
-        result = await get_last_match_stats(nickname)
-
-        if isinstance(result, discord.Embed):  # Jeśli funkcja zwróciła Embed
-            await message.channel.send(embed=result)
-        else:  # Jeśli funkcja zwróciła tekst
-            await message.channel.send(result)
-
-    if message.content.startswith("!resetmasny"):
-        resetmasny()
-        await display_last_match_stats()
-        print("Reseted masny.txt file.")
-        await message.channel.send("✅ Statystyki w masny.txt zostały zresetowane!\n*Aktualnie z niewiadomych przyczyn "
-                                   "plik się resetuje, ale statystyki wyświetlają się stare, po resecie bota będzie "
-                                   "poprawna aktualna liczba miejsc.*")
-
-    if message.content.startswith("!dodajgre "):
-        game_name = message.content[len("!dodajgre "):].strip()
-        if not game_name:
-            embed = discord.Embed(
-                title="Błąd",
-                description="Użycie: `!dodajgre [nazwa gry]`",
-                color=discord.Color.red()
-            )
-            await message.channel.send(embed=embed)
-            return
-
-        # Dodajemy grę z pustym opisem
-        games.append({"name": game_name, "description": ""})
-        save_games()
-        print(f"Added '{game_name}' game to list of games to play.")
-
-        # Tworzymy embed z potwierdzeniem
-        embed = discord.Embed(
-            title="Dodano grę",
-            description=f"Pomyślnie dodano **{game_name}** do listy gier.",
-            color=discord.Color.blue()
-        )
-        await message.channel.send(embed=embed)
-
-    if message.content.startswith("!dodajopis "):
-        parts = message.content.split(" ", 2)
-        if len(parts) < 3:
-            embed = discord.Embed(
-                title="Błąd",
-                description="Użycie: `!dodajopis [numer gry z listy] [opis gry]`",
-                color=discord.Color.red()
-            )
-            await message.channel.send(embed=embed)
-            return
-
-        index_str = parts[1].strip()
-        opis = parts[2].strip()
-
-        if not index_str.isdigit():
-            embed = discord.Embed(
-                title="Błąd",
-                description="Numer gry musi być liczbą!",
-                color=discord.Color.red()
-            )
-            await message.channel.send(embed=embed)
-            return
-
-        index = int(index_str) - 1
-        if index < 0 or index >= len(games):
-            embed = discord.Embed(
-                title="Błąd",
-                description="Nieprawidłowy numer gry!",
-                color=discord.Color.red()
-            )
-            await message.channel.send(embed=embed)
-            return
-
-        games[index]["description"] = opis
-        save_games()
-        print(f"Added description to '{games[index]['name']}' game.")
-
-        embed = discord.Embed(
-            title="Dodano opis",
-            description=(
-                f"Gra: **{games[index]['name']}**\n"
-                f"Opis: {opis}"
-            ),
-            color=discord.Color.blue()
-        )
-        await message.channel.send(embed=embed)
-
-    if message.content.startswith("!usungre "):
-        parts = message.content.split(" ", 1)
-        if len(parts) < 2:
-            embed = discord.Embed(
-                title="Błąd",
-                description="Użycie: `!usungre [numer gry z listy]`",
-                color=discord.Color.red()
-            )
-            await message.channel.send(embed=embed)
-            return
-
-        index_str = parts[1].strip()
-        if not index_str.isdigit():
-            embed = discord.Embed(
-                title="Błąd",
-                description="Numer gry musi być liczbą!",
-                color=discord.Color.red()
-            )
-            await message.channel.send(embed=embed)
-            return
-
-        index = int(index_str) - 1
-        if index < 0 or index >= len(games):
-            embed = discord.Embed(
-                title="Błąd",
-                description="Nieprawidłowy numer gry!",
-                color=discord.Color.red()
-            )
-            await message.channel.send(embed=embed)
-            return
-
-        removed_game = games.pop(index)
-        save_games()
-        print(f"Removed '{removed_game['name']}' from games to play list.")
-
-        embed = discord.Embed(
-            title="Usunięto grę",
-            description=f"Z listy usunięto: **{removed_game['name']}**",
-            color=discord.Color.orange()
-        )
-        await message.channel.send(embed=embed)
-
-    if message.content.startswith("!edytujopis "):
-        parts = message.content.split(" ", 2)
-        if len(parts) < 3:
-            embed = discord.Embed(
-                title="Błąd",
-                description="Użycie: `!edytujopis [numer gry z listy] [nowy opis]`",
-                color=discord.Color.red()
-            )
-            await message.channel.send(embed=embed)
-            return
-
-        index_str = parts[1].strip()
-        nowy_opis = parts[2].strip()
-
-        if not index_str.isdigit():
-            embed = discord.Embed(
-                title="Błąd",
-                description="Numer gry musi być liczbą!",
-                color=discord.Color.red()
-            )
-            await message.channel.send(embed=embed)
-            return
-
-        index = int(index_str) - 1
-        if index < 0 or index >= len(games):
-            embed = discord.Embed(
-                title="Błąd",
-                description="Nieprawidłowy numer gry!",
-                color=discord.Color.red()
-            )
-            await message.channel.send(embed=embed)
-            return
-
-        stara_nazwa = games[index]["name"]
-        games[index]["description"] = nowy_opis
-        save_games()
-        print(f"Edited description of '{stara_nazwa}' game.")
-
-        embed = discord.Embed(
-            title="Edytowano opis gry",
-            description=(
-                f"Gra: **{stara_nazwa}**\n"
-                f"Nowy opis: {nowy_opis}"
-            ),
-            color=discord.Color.blue()
-        )
-        await message.channel.send(embed=embed)
-
-    if message.content.startswith("!gry"):
-        if not games:
-            embed = discord.Embed(
-                title="Lista gier",
-                description="Brak gier na liście.",
-                color=discord.Color.blue()
-            )
-            await message.channel.send(embed=embed)
-        else:
-            embed = discord.Embed(
-                title="Lista gier",
-                description="Poniżej znajduje się lista gier, w które chcemy zagrać:",
-                color=discord.Color.blue()
-            )
-            for i, g in enumerate(games, start=1):
-                name = g["name"]
-                desc = g["description"] if g["description"] else "Brak opisu"
-                embed.add_field(
-                    name=f"{i}. {name}",
-                    value=desc,
-                    inline=False
-                )
-            await message.channel.send(embed=embed)
-
-    if message.content.startswith("!ile"):
-        ref_date = load_reference_date()
-        today = date.today()
-        diff = (today - ref_date).days  # może być też ujemne, jeżeli ref_date jest w przyszłości
-
-        # Budujemy ładny embed z wynikiem
-        embed = discord.Embed(
-            title="Ile dni minęło od ostatniego serwera minecraft?",
-            color=discord.Color.blue()
-        )
-
-        # Jeżeli diff < 0, to data bazowa jest w przyszłości
-        if diff < 0:
-            embed.add_field(
-                name="Wynik",
-                value=(
-                    f"Ustawiona data ({ref_date}) jest w przyszłości!\n"
-                    f"Do **{ref_date}** pozostało jeszcze **{abs(diff)}** dni."
-                ),
-                inline=False
-            )
-        else:
-            embed.add_field(
-                name=f"*{diff} dni*... 😢",
-                value=(
-                    f""
-                ),
-                inline=False
-            )
-            embed.set_image(
-                url="https://media.discordapp.net/attachments/607581853880418366/1302050384184999978/image.png?ex=67c6e2aa&is=67c5912a&hm=a8b52b3437f22136b0436de0c4da302ed0ef8800f64757598c0fd0da3cd639c0&=&format=webp&quality=lossless&width=1437&height=772")
-
-        await message.channel.send(embed=embed)
-
-    # Komenda !ilereset
-    if message.content.startswith("!ilereset"):
-        # Resetujemy datę do dzisiejszego dnia
-        now = date.today()
-        save_reference_date(now)
-        print("Reseted reference day.")
-
-        # Tworzymy embed z komunikatem o resecie
-        embed = discord.Embed(
-            title="Zresetowano odliczanie",
-            description=(
-                f"Od teraz liczba dni będzie naliczana od dzisiejszej daty:\n"
-                f"**{now.isoformat()}**"
-            ),
-            color=discord.Color.orange()
-        )
-        await message.channel.send(embed=embed)
-
-    if message.content == "!infoplaster":
+    if message.content == "!infoplaster" and message.channel.id == 1346496307023581274:
         stats = load_json(STATS_FILE)
         history = load_json(STATS_HISTORY_FILE)
 
         last_7_days = sorted(stats.items(), key=lambda x: x[0], reverse=True)[:7]
         max_day = max(last_7_days, key=lambda x: x[1])
-        history_max = max(history.items(), key=lambda x: x[1])
+        nonzero_history = {k: v for k, v in history.items() if v > 0}
+        history_max = max(nonzero_history.items(), key=lambda x: x[1]) if nonzero_history else ("Brak", 0)
 
         dni_tygodnia = {
             "Monday": "Poniedziałek",
@@ -1121,6 +462,9 @@ async def on_message(message):
             color=discord.Color.green()
         )
 
+        max_value = max(count for _, count in last_7_days)
+        bar_max_width = 20  # maksymalna długość paska w znakach
+
         for day, count in last_7_days:
             date_obj = datetime.strptime(day, "%Y-%m-%d")
             weekday_en = date_obj.strftime("%A")
@@ -1128,7 +472,16 @@ async def on_message(message):
             weekday_pl = dni_tygodnia.get(weekday_en, weekday_en)
             month_pl = miesiace.get(month_en, month_en)
             day_str = f"{date_obj.day} {month_pl} ({weekday_pl})"
-            embed.add_field(name=day_str, value=f"→ {count} połączenia", inline=False)
+
+            # Tworzenie paska wykresu ASCII
+            bar_length = int((count / max_value) * bar_max_width) if max_value > 0 else 0
+            bar = "█" * bar_length + "░" * (bar_max_width - bar_length)
+
+            embed.add_field(
+                name=day_str,
+                value=f"-> {count} {polaczenie_label(count)}\n{bar}",
+                inline=False
+            )
 
         embed.add_field(
             name="📈 Najwięcej połączeń w ostatnim tygodniu",
@@ -1150,6 +503,237 @@ async def on_message(message):
 
         await message.channel.send(embed=embed)
 
+    if message.content.startswith("!bet ") and message.channel.id == 1346496307023581274:
+        try:
+            guess = int(message.content.split(" ")[1])
+        except (IndexError, ValueError):
+            await message.channel.send("Użycie: `!bet [liczba]`, np. `!bet 10`")
+            return
+
+        if guess < 1 or guess > 30:
+            await message.channel.send("cmon, bez przesady xD")
+            return
+
+        user_id = str(message.author.id)
+        user_name = message.author.name
+
+        bet_date = (datetime.now() + timedelta(days=1)).strftime("%Y-%m-%d")
+
+        bets_data = load_bets()
+
+        if bet_date in bets_data and user_id in bets_data[bet_date]:
+            await message.channel.send(f"Już obstawiłeś zakład na {bet_date}! Poczekaj na kolejną dobę.")
+            return
+
+        if bet_date not in bets_data:
+            bets_data[bet_date] = {}
+
+        bets_data[bet_date][user_id] = {
+            "name": user_name,
+            "guess": guess
+        }
+
+        save_bets(bets_data)
+
+        await message.channel.send(
+            f"🎲 Zapisano zakład: **{user_name}** przewiduje, że **{TARGET_USER_NAME}** zaloguje się **{guess}** razy w dniu **{bet_date}**!"
+        )
+
+    if message.content == "!mybets" and message.channel.id == 1346496307023581274:
+        bets_data = load_json(BETS_FILE)
+        user_bets = bets_data.get("bets", {})
+        user_id = str(message.author.id)
+        user_history = user_bets.get(user_id, [])
+
+        if not user_history:
+            await message.channel.send("Nie obstawiałeś jeszcze żadnych zakładów.")
+            return
+
+        embed = discord.Embed(
+            title=f"🎯 Historia zakładów: {message.author.name}",
+            color=discord.Color.purple()
+        )
+
+        for entry in sorted(user_history, key=lambda x: x["date"], reverse=True)[-10:]:
+            result_text = "✅ TAK" if entry["result"] else "❌ NIE"
+            embed.add_field(
+                name=f"{entry['date']}",
+                value=f"Typ: **{entry['value']}** | Wynik: {entry['actual']} | {result_text}",
+                inline=False
+            )
+
+        await message.channel.send(embed=embed)
+
+    if message.content == "!tabela" and message.channel.id == 1346496307023581274:
+        bets_data = load_json(BETS_FILE)
+        user_bets = bets_data.get("bets", {})
+        scores = {}
+        exact_hits = {}  # Dla dokładnych trafień
+
+        # Zliczanie punktów i dokładnych trafień
+        exact_match = False  # Flaga, żeby wiedzieć, czy był dokładny traf
+        closest_users = []  # Lista użytkowników z najbliższą różnicą
+        closest_difference = float('inf')  # Inicjalizuj z największą możliwą różnicą
+
+        for user_id, records in user_bets.items():
+            total_score = 0
+            exact_hits_count = 0
+
+            for record in records:
+                if record["value"] == record["actual"]:  # Dokładne trafienie
+                    total_score += 5
+                    exact_hits_count += 1
+                    exact_match = True
+                else:
+                    difference = abs(record["value"] - record["actual"])
+
+                    if difference < closest_difference:  # Znaleziono nowego najbliższego użytkownika
+                        closest_difference = difference
+                        closest_users = [user_id]  # Zresetuj listę z najbliższymi użytkownikami
+                    elif difference == closest_difference:  # Dodaj użytkownika, jeśli ma równą różnicę
+                        closest_users.append(user_id)
+
+                    total_score -= 1  # Błędne obstawienie
+
+            scores[user_id] = total_score
+            exact_hits[user_id] = exact_hits_count
+
+        # Logika przyznawania punktów
+        if not exact_match and closest_users:
+            # Jeżeli nikt nie trafił dokładnie, przyznaj punkty dla najbliższych
+            for user_id in user_bets:
+                if user_id in closest_users:
+                    scores[user_id] = 3  # Najbliżsi dostają 3 punkty
+                else:
+                    scores[user_id] = -1  # Reszta dostaje -1
+
+        # TOP 5 punktów
+        top5 = sorted(scores.items(), key=lambda x: x[1], reverse=True)[:5]
+        if not top5:
+            await message.channel.send("Brak danych do rankingu punktów.")
+            return
+
+        embed = discord.Embed(
+            title="🥇 TOP 5 punktów",
+            description="Dokładne trafienie = +5 pkt \n"
+                        "Najbliższe trafienie = +3pkt\n"
+                        "Pudło = -1 pkt",
+            color=discord.Color.dark_green()
+        )
+
+        for user_id, score in top5:
+            member = message.guild.get_member(int(user_id))
+            name = member.name if member else f"User {user_id}"
+            embed.add_field(name=name, value=f"{score} pkt", inline=False)
+
+        # TOP 3 dokładnych trafień
+        top3_exact_hits = sorted(exact_hits.items(), key=lambda x: x[1], reverse=True)[:3]
+        if top3_exact_hits:
+            embed.add_field(
+                name="🎯 TOP 3 dokładnych trafień",
+                value="",
+                inline=False
+            )
+            for user_id, hits in top3_exact_hits:
+                member = message.guild.get_member(int(user_id))
+                name = member.name if member else f"User {user_id}"
+                embed.add_field(name=name, value=f"{hits} dokładnych trafień", inline=False)
+
+        # Dodanie punktów użytkownika, który użył komendy
+        user_id = str(message.author.id)  # ID użytkownika, który wysłał komendę
+        user_score = scores.get(user_id, 0)
+        user_hits = exact_hits.get(user_id, 0)
+        user_name = message.author.name
+
+        embed.add_field(
+            name=f"🔹 {user_name} (Ty)",
+            value=f"Punkty: {user_score}\nDokładne trafienia: {user_hits}",
+            inline=False
+        )
+
+        await message.channel.send(embed=embed)
+
+    if message.content == "!bety" and message.channel.id == 1346496307023581274:
+        # Pobranie daty na następny dzień oraz dzisiaj
+        next_day = (datetime.now() + timedelta(days=1)).strftime("%Y-%m-%d")
+        today = datetime.now().strftime("%Y-%m-%d")
+
+        # Ładowanie danych z pliku
+        bets_data = load_bets()
+
+        # Bety na następny dzień
+        tomorrow_bets = bets_data.get(next_day, {})
+
+        # Bety na dzisiaj (czyli te obstawione wczoraj)
+        today_bets = bets_data.get(today, {})
+
+        # Pobranie avatara użytkownika (Geekot #1450)
+        target_member = discord.utils.get(message.guild.members, name="Geekot", discriminator="1450")
+        avatar_url = target_member.avatar.url if target_member and target_member.avatar else None
+
+        embed = discord.Embed(
+            title=f"🎲 Bety na dzień {next_day} oraz {today}",
+            description=(
+                f"**Bety na jutro:** {len(tomorrow_bets)} użytkowników\n"
+                f"**Bety na dziś:** {len(today_bets)} użytkowników"
+            ),
+            color=discord.Color.purple()
+        )
+
+        # Dodajemy avatar użytkownika Geekot
+        if avatar_url:
+            embed.set_thumbnail(url=avatar_url)
+
+        # Bety na następny dzień
+        if tomorrow_bets:
+            embed.add_field(
+                name=f"⏩ Bety na {next_day} (jutro)",
+                value="\n".join([f"**{data['name']}** \n▪️obstawił **{data['guess']}** logowań" for user_id, data in
+                                 tomorrow_bets.items()]),
+                inline=False
+            )
+        else:
+            embed.add_field(name=f"⏩ Bety na {next_day} (jutro)", value="Brak obstawień.", inline=False)
+
+        # Bety na dzisiaj
+        if today_bets:
+            embed.add_field(
+                name=f"⏩ Bety na {today} (dziś - obstawione wczoraj)",
+                value="\n".join([f"**{data['name']}** \n▪️obstawił **{data['guess']}** logowań" for user_id, data in
+                                 today_bets.items()]),
+                inline=False
+            )
+        else:
+            embed.add_field(name=f"Bety na {today}", value="Brak obstawień.", inline=False)
+
+        embed.set_footer(
+            text="Aby zagłosować, użyj komendy: `!bet [liczba]`, np. `!bet 10`.\nZakład można obstawić tylko raz dziennie."
+        )
+
+        # Wysyłanie wiadomości z embedem
+        await message.channel.send(embed=embed)
+
+    if message.content == "!gambling" and message.channel.id == 1346496307023581274:
+        embed = discord.Embed(
+            title="🎲 Zasady zakładów",
+            description=(
+                "1. Zakłady są obstawiane na **liczbę logowań użytkownika 'phester102'** na Discordzie w ciągu następnej doby.\n"
+                "2. Każdy użytkownik może obstawić liczbę logowań.\n"
+                "3. Po zakończeniu doby, jeśli ktoś trafi dokładnie liczbę logowań, dostaje **5 punktów**.\n"
+                "4. Jeśli ktoś obstawi liczbę logowań, która jest najbliższa, dostaje **3 punkty**.\n"
+                "5. Pozostali, którzy się pomylili, dostają **-1 punkt**.\n"
+                "6. Każdy użytkownik może obstawić zakład tylko raz dziennie.\n"
+                "7. Zakłady na następny dzień otwierają się po zakończeniu podsumowania betów.\n"
+                "\nDostępne komendy:\n"
+                "`!bet [ilosc]` - obstaw ile razy plaster sie zaloguje\n"
+                "`!bety` - pokaż jak głosują dziś użytkownicy\n"
+                "`!tabela` - tabela punktów"
+            ),
+            color=discord.Color.green()
+        )
+        await message.channel.send(embed=embed)
 
 # Uruchomienie bota
-client.run(DISCORD_TOKEN)
+if __name__ == "__main__":
+    start_console_listener()
+    client.run(DISCORD_TOKEN)
