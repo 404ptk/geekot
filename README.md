@@ -1,5 +1,6 @@
 <p align="center">Functions</p>
 <p align="center"><img src="/geekot.png" width="400" alt="funkcje"></a></p>
+<p align="center"><img src="/geekot2.png" width="400" alt="funkcje"></a></p>
 <hr>
 <p align="center">What do you need to use bot?</p>
 <p align="center">
