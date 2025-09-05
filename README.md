@@ -7,5 +7,6 @@
     <li>Your API key Faceit</li>
     <li>Your API key Twitch</li>
     <li>Your API key Kick</li>
+    <li>Your API key football-data.org</li>
   </ul>
 </p>
