@@ -1,0 +1,32 @@
+Runda z użyciem wyłącznie Deagla
+Zagraj rundę bez granatów
+Runda z użyciem wyłącznie Zeusa
+Runda z użyciem wyłącznie Scouta (noscope only)
+Runda z użyciem wyłącznie Pistoletów
+Runda z użyciem wyłącznie Strzelb
+Runda z +W cały czas
+Używaj myszki tylko do strzału i ewentualnego przycelowania (prawy klawisz, bez ruszania na boki)
+Runda z kucakiem cały czas
+Runda z użyciem wyłącznie granatów/zeus/nóż
+Stackujecie side A (jeśli TT to rush A)
+Stackujecie side B (jeśli TT to rush B)
+Czekacie na respie 30s i dopiero gracie (albo na równo z plantem TT)
+Runda one by one, czyli może tylko grać jeden na raz
+Runda z użyciem wyłącznie Negeva
+Runda z Shift cały czas
+Runda bez info (zakaz gadania, pingów, czatu)
+Runda z użyciem wyłącznie Revolvera (alternatywa to CZtka)
+Runda one-tap only (zakaz fullauto)
+Runda, w której open frager zupełnie nie gra (chyba, że zostanie ostatni)
+Runda, w której grają tylko miejsca 3-5 (po ich zginięciu gra miejsce nr 2, a gdy on zginie gra miejsce 1)
+Runda, w której można się ruszać tylko za pomocą A/D (+ ruch myszką)
+Runda totalny rush (każdy pushuje najbliższą dla siebie pozycje względem spawna)
+Wybieracie osobę, która w tej rundzie nie gra
+Runda z użyciem wyłącznie ruchu w tył (S only + myszka)
+Runda z użyciem wyłącznie Obrzyma/Novy
+Runda z użyciem tylko PM-ów, ale gracie na daleko (np. stoicie CT na miragu i patrzycie rampe)
+Runda z wyłączonym celownikiem (`cl_crosshairalpha 0`, ustawienie z powrotem to `cl_crosshairalpha 255`)
+Runda bez kevlara (kto już ma gra z pistoletu, jeśli nie masz kevlara możesz grać czym chcesz)
+Runda z cały czas odpalonym mikrofonem w grze (nie ważne czy to dla was wygodne czy nie, zakazane jest mutowanie!)
+Runda, w której idziecie za sobą jak w "pociągu"
+Runda, w której robicie obiegówke po mapie (jeśli CT to musicie zahaczyć o resp przeciwnika)
