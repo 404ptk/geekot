@@ -5,6 +5,7 @@
 <p align="center">What do you need to use bot?</p>
 <p align="center">
   <ul>
+    <li>Your Discord Token</li>
     <li>Your API key Faceit</li>
     <li>Your API key Twitch</li>
     <li>Your API key Kick</li>
