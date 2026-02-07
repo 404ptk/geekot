@@ -27,6 +27,7 @@ player_nicknames = ['utopiasz', 'radzioswir', 'PhesterM9', '-Masny-', '-mateuko'
 
 FACEIT_RANKING_FILE = "txt/faceit_ranking.txt"
 FACEIT_DAILY_STATS_FILE = "txt/faceit_daily_stats.json"
+SIEROTY_FILE = "txt/sieroty.json"
 
 def get_faceit_player_data(nickname):
     url = f'https://open.faceit.com/data/v4/players?nickname={nickname}'
@@ -374,6 +375,19 @@ def save_daily_stats(data):
     with open(FACEIT_DAILY_STATS_FILE, "w") as f:
         json.dump(data, f)
 
+def load_sieroty():
+    if os.path.exists(SIEROTY_FILE):
+        try:
+            with open(SIEROTY_FILE, "r", encoding="utf-8") as file:
+                return json.load(file)
+        except (json.JSONDecodeError, ValueError):
+            return []
+    return []
+
+def save_sieroty(data):
+    with open(SIEROTY_FILE, "w", encoding="utf-8") as file:
+        json.dump(data, file, ensure_ascii=False, indent=4)
+
 @tasks.loop(minutes=10)
 async def track_daily_elo():
     # Sprawdź czy mamy staty na dziś
@@ -543,6 +557,130 @@ async def setup_faceit_commands(client: discord.Client, tree: app_commands.Comma
     if not track_daily_elo.is_running():
         track_daily_elo.start()
 
+    sieroty_group = app_commands.Group(name="sieroty", description="Ściana wstydu (najgorsze mecze)")
+
+    @sieroty_group.command(name="lista", description="Wyświetla listę najgorszych meczy")
+    async def sieroty_lista(interaction: discord.Interaction):
+        sieroty_data = load_sieroty()
+        if not sieroty_data:
+            await interaction.response.send_message("🐣 Lista sierot jest pusta! Wszyscy grają jak szefowie.", ephemeral=True)
+            return
+        
+        # Sort by ADR ascending (lowest on top)
+        try:
+            sieroty_data.sort(key=lambda x: float(x.get('adr', 999)))
+        except ValueError:
+            pass
+
+        embed = discord.Embed(title="Ściana Wstydu", description="Lista najgorszych występów w historii:", color=discord.Color.dark_grey())
+        
+        desc = ""
+        for entry in sieroty_data:
+            # Prefer 'kda' field if exists, otherwise fallback to 'kd'
+            kd_val = entry.get('kda', entry.get('kd', 'N/A'))
+            desc += f"**{entry['date']}** | **{entry['nick']}**\nADR: {entry['adr']} | K/D/A: {kd_val} | HS: {entry['hs']}%\n\n"
+        
+        embed.description = desc
+        await interaction.response.send_message(embed=embed)
+
+    @sieroty_group.command(name="dodaj", description="Dodaje ostatni mecz gracza do listy sierot")
+    @app_commands.describe(nick="Nick gracza")
+    @app_commands.autocomplete(nick=faceit_nick_autocomplete)
+    async def sieroty_dodaj(interaction: discord.Interaction, nick: str):
+        await interaction.response.defer()
+        player_data = get_faceit_player_data(nick)
+        if not player_data:
+            await interaction.followup.send(f"❌ Nie znaleziono gracza **{nick}**.", ephemeral=True)
+            return
+
+        pid = player_data['player_id']
+        matches = get_faceit_player_matches(pid, limit=1)
+        if not matches:
+            await interaction.followup.send(f"❌ Brak meczy dla gracza **{nick}**.", ephemeral=True)
+            return
+
+        last_match = matches[0]
+        match_id = last_match.get("match_id") if last_match.get("match_id") else last_match.get("stats", {}).get("Match Id")
+
+        if not match_id:
+             await interaction.followup.send("❌ Nie udało się pobrać ID ostatniego meczu.", ephemeral=True)
+             return
+             
+        details = get_faceit_match_details(match_id)
+        if not details:
+            await interaction.followup.send("❌ Błąd pobierania szczegółów meczu.", ephemeral=True)
+            return
+
+        # Find stats
+        target_stats = None
+        real_nick = player_data['nickname']
+        
+        for team in details['teams'].values():
+            for p in team['players']:
+                if p['nickname'] == real_nick:
+                    target_stats = p
+                    break
+            if target_stats: break
+        
+        if not target_stats:
+            await interaction.followup.send("❌ Nie znaleziono statystyk gracza w tym meczu.", ephemeral=True)
+            return
+            
+        months_pl = {
+            1: "stycznia", 2: "lutego", 3: "marca", 4: "kwietnia", 5: "maja", 6: "czerwca",
+            7: "lipca", 8: "sierpnia", 9: "września", 10: "października", 11: "listopada", 12: "grudnia"
+        }
+        now = datetime.now()
+        date_str = f"{now.day} {months_pl[now.month]} {now.year}"
+        
+        kills = target_stats['kills']
+        deaths = target_stats['deaths']
+        assists = target_stats['assists']
+        kd_ratio = kills / deaths if deaths > 0 else kills
+        
+        # Save as K/D/A string in 'kda' field
+        kda_str = f"{kills}/{deaths}/{assists}"
+        
+        entry = {
+            "nick": real_nick,
+            "date": date_str,
+            "adr": f"{float(target_stats.get('adr', 0)):.0f}",
+            "kda": kda_str,
+            "kd": f"{kd_ratio:.2f}", # Keep for potential backward compat or other use
+            "hs": str(target_stats['headshots']),
+            "match_id": match_id
+        }
+        
+        data = load_sieroty()
+        data.append(entry)
+        save_sieroty(data)
+        
+        await interaction.followup.send(f"🤡 Dodano **{real_nick}** do listy sierot!")
+
+    @sieroty_group.command(name="usun", description="Usuwa ostatni wpis gracza z listy sierot")
+    @app_commands.describe(nick="Nick gracza")
+    @app_commands.autocomplete(nick=faceit_nick_autocomplete)
+    async def sieroty_usun(interaction: discord.Interaction, nick: str):
+        data = load_sieroty()
+        if not data:
+            await interaction.response.send_message("Lista jest pusta.", ephemeral=True)
+            return
+            
+        index_to_remove = -1
+        for i in range(len(data) - 1, -1, -1):
+            if data[i]['nick'].lower() == nick.lower():
+                index_to_remove = i
+                break
+        
+        if index_to_remove != -1:
+            removed = data.pop(index_to_remove)
+            save_sieroty(data)
+            await interaction.response.send_message(f"🗑️ Usunięto wpis dla **{removed['nick']}** z dnia {removed['date']}.")
+        else:
+            await interaction.response.send_message(f"❌ Nie znaleziono wpisów dla gracza **{nick}**.", ephemeral=True)
+            
+    tree.add_command(sieroty_group, guild=guild)
+
 MASNY_FILE = "txt/masny.txt"
 
 # Zdjęcia dla miejsc 1-5
@@ -571,89 +709,127 @@ def save_masny_data(data):
     with open(MASNY_FILE, "w", encoding="utf-8") as f:
         json.dump(data, f)
 
-async def setup_masny_command(client: discord.Client, tree: app_commands.CommandTree, guild_id: int = None):
-    guild = discord.Object(id=guild_id) if guild_id else discord.Object(id=GUILD_ID)
 
-    @tree.command(
-        name="masny",
-        description="Dodaj, odejmij lub pokaż statystyki miejsc Masnego (1-5, -1 do odjęcia)",
-        guild=guild
-    )
-    @app_commands.describe(
-        miejsce="Miejsce od 1 do 5 (np. 1, 2, ...), lub -1 do -5 do odejmowania. Puste = statystyki."
-    )
-    async def masny(interaction: discord.Interaction, miejsce: str = None):
-        masny_counter = load_masny_data()
+    sieroty_group = app_commands.Group(name="sieroty", description="Ściana wstydu (najgorsze mecze)", guild=guild)
 
-        if miejsce is None:
-            # Wyświetl statystyki
-            total_counts = sum(masny_counter.values())
-            if total_counts == 0:
-                await interaction.response.send_message("Brak danych o miejscach Masnego.")
-                return
+    @sieroty_group.command(name="lista", description="Wyświetla listę najgorszych meczy")
+    async def sieroty_lista(interaction: discord.Interaction):
+        sieroty_data = load_sieroty()
+        if not sieroty_data:
+            await interaction.response.send_message("🐣 Lista sierot jest pusta! Wszyscy grają jak szefowie.", ephemeral=True)
+            return
+        
+        # Sort by ADR ascending (lowest on top)
+        try:
+            sieroty_data.sort(key=lambda x: float(x.get('adr', 999)))
+        except ValueError:
+            pass
 
-            weighted_sum = sum(int(key) * count for key, count in masny_counter.items())
-            avg_position = weighted_sum / total_counts if total_counts > 0 else 0
-            most_common_position = max(masny_counter, key=masny_counter.get) if total_counts > 0 else None
+        embed = discord.Embed(title="💩 Ściana Wstydu - Sieroty", description="Lista najgorszych występów w historii:", color=discord.Color.dark_grey())
+        
+        desc = ""
+        for entry in sieroty_data:
+            # Prefer 'kda' field if exists, otherwise fallback to 'kd'
+            kd_val = entry.get('kda', entry.get('kd', 'N/A'))
+            desc += f"🗓️ **{entry['date']}** 👤 **{entry['nick']}**\n📉 ADR: {entry['adr']} | K/D/A: {kd_val} | HS: {entry['hs']}%\n\n"
+        
+        embed.description = desc
+        await interaction.response.send_message(embed=embed)
 
-            embed = discord.Embed(
-                title="📊 Miejsca w tabeli Masnego",
-                color=discord.Color.blue()
-            )
-
-            for key in sorted(masny_counter.keys()):
-                count = masny_counter[key]
-                percent = (count / total_counts) * 100 if total_counts > 0 else 0
-                embed.add_field(name=f"🏅 **{key} miejsce**", value=f"{count} razy *({percent:.2f}%)*", inline=False)
-
-            embed.add_field(name="\u200b", value="", inline=False)
-            embed.add_field(name="📉 Średnie miejsce", value=f"**{avg_position:.2f}**", inline=False)
-            embed.add_field(name="📌 Masny najczęściej zajmuje", value=f"**{most_common_position}** miejsce", inline=False)
-            embed.add_field(name="\u200b", value="", inline=False)
-            embed.set_footer(text="Aby dopisać miejsce Masnego w tabeli wpisz `/masny [miejsce]`")
-
-            await interaction.response.send_message(embed=embed)
+    @sieroty_group.command(name="dodaj", description="Dodaje ostatni mecz gracza do listy sierot")
+    @app_commands.describe(nick="Nick gracza")
+    @app_commands.autocomplete(nick=faceit_nick_autocomplete)
+    async def sieroty_dodaj(interaction: discord.Interaction, nick: str):
+        await interaction.response.defer()
+        player_data = get_faceit_player_data(nick)
+        if not player_data:
+            await interaction.followup.send(f"❌ Nie znaleziono gracza **{nick}**.", ephemeral=True)
             return
 
-        miejsce = miejsce.strip()
-        # Odejmowanie miejsca
-        if miejsce.startswith('-') and miejsce[1:] in masny_counter:
-            place = miejsce[1:]
-            if masny_counter[place] > 0:
-                masny_counter[place] -= 1
-                save_masny_data(masny_counter)
-                embed = discord.Embed(
-                    title="📉 Aktualizacja tabeli Masnego",
-                    description=f"Miejsce **{place}** zostało zmniejszone o 1.",
-                    color=discord.Color.red()
-                )
-                await interaction.response.send_message(embed=embed)
-            else:
-                embed = discord.Embed(
-                    title="⚠️ Błąd",
-                    description=f"Miejsce **{place}** jest już na zerze i nie można go dalej zmniejszać.",
-                    color=discord.Color.red()
-                )
-                await interaction.response.send_message(embed=embed)
+        pid = player_data['player_id']
+        matches = get_faceit_player_matches(pid, limit=1)
+        if not matches:
+            await interaction.followup.send(f"❌ Brak meczy dla gracza **{nick}**.", ephemeral=True)
             return
 
-        # Dodawanie miejsca
-        if miejsce in masny_counter:
-            masny_counter[miejsce] += 1
-            save_masny_data(masny_counter)
-            embed = discord.Embed(
-                title=f"🏆 Masny zajął {miejsce} miejsce!",
-                color=discord.Color.gold()
-            )
-            image_url = image_links.get(miejsce)
-            if image_url:
-                embed.set_image(url=image_url)
-            embed.add_field(name="📊 Statystyki", value=f"Zaktualizowano miejsce **{miejsce}**.", inline=False)
-            await interaction.response.send_message(embed=embed)
+        last_match = matches[0]
+        match_id = last_match.get("match_id") if last_match.get("match_id") else last_match.get("stats", {}).get("Match Id")
+
+        if not match_id:
+             await interaction.followup.send("❌ Nie udało się pobrać ID ostatniego meczu.", ephemeral=True)
+             return
+             
+        details = get_faceit_match_details(match_id)
+        if not details:
+            await interaction.followup.send("❌ Błąd pobierania szczegółów meczu.", ephemeral=True)
             return
 
-        await interaction.response.send_message(
-            "Niepoprawny format miejsca. Użyj liczby od 1 do 5 lub -[1-5] do odejmowania.", ephemeral=True
-        )
+        # Find stats
+        target_stats = None
+        real_nick = player_data['nickname']
+        
+        for team in details['teams'].values():
+            for p in team['players']:
+                if p['nickname'] == real_nick:
+                    target_stats = p
+                    break
+            if target_stats: break
+        
+        if not target_stats:
+            await interaction.followup.send("❌ Nie znaleziono statystyk gracza w tym meczu.", ephemeral=True)
+            return
+            
+        months_pl = {
+            1: "stycznia", 2: "lutego", 3: "marca", 4: "kwietnia", 5: "maja", 6: "czerwca",
+            7: "lipca", 8: "sierpnia", 9: "września", 10: "października", 11: "listopada", 12: "grudnia"
+        }
+        now = datetime.now()
+        date_str = f"{now.day} {months_pl[now.month]} {now.year}"
+        
+        kills = target_stats['kills']
+        deaths = target_stats['deaths']
+        assists = target_stats['assists']
+        kd_ratio = kills / deaths if deaths > 0 else kills
+        
+        # Save as K/D/A string in 'kda' field
+        kda_str = f"{kills}/{deaths}/{assists}"
+        
+        entry = {
+            "nick": real_nick,
+            "date": date_str,
+            "adr": f"{float(target_stats.get('adr', 0)):.0f}",
+            "kda": kda_str,
+            "kd": f"{kd_ratio:.2f}", # Keep for potential backward compat or other use
+            "hs": str(target_stats['headshots']),
+            "match_id": match_id
+        }
+        
+        data = load_sieroty()
+        data.append(entry)
+        save_sieroty(data)
+        
+        await interaction.followup.send(f"🤡 Dodano **{real_nick}** do listy sierot!")
 
-    print("Slash command /masny zarejestrowany w faceit_utils.py")
+    @sieroty_group.command(name="usun", description="Usuwa ostatni wpis gracza z listy sierot")
+    @app_commands.describe(nick="Nick gracza")
+    @app_commands.autocomplete(nick=faceit_nick_autocomplete)
+    async def sieroty_usun(interaction: discord.Interaction, nick: str):
+        data = load_sieroty()
+        if not data:
+            await interaction.response.send_message("Lista jest pusta.", ephemeral=True)
+            return
+            
+        index_to_remove = -1
+        for i in range(len(data) - 1, -1, -1):
+            if data[i]['nick'].lower() == nick.lower():
+                index_to_remove = i
+                break
+        
+        if index_to_remove != -1:
+            removed = data.pop(index_to_remove)
+            save_sieroty(data)
+            await interaction.response.send_message(f"🗑️ Usunięto wpis dla **{removed['nick']}** z dnia {removed['date']}.")
+        else:
+            await interaction.response.send_message(f"❌ Nie znaleziono wpisów dla gracza **{nick}**.", ephemeral=True)
+            
+    tree.add_command(sieroty_group, guild=guild)

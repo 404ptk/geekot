@@ -405,26 +405,6 @@ async def on_message(message):
         except Exception as e:
             await message.channel.send(f"❌ Błąd podczas czyszczenia komend: {e}")
 
-    if message.content.startswith('!spawn'):
-        user_id = 606785554918539275  # ID użytkownika mansy_
-        user = await client.fetch_user(user_id)  # Pobieramy użytkownika
-
-        args = message.content.split()  # Dzielimy wiadomość na części
-
-        if len(args) == 1:
-            # Jeśli nie podano dodatkowego argumentu
-            await message.channel.send(f"Klucha wbijaj na csa potrzebujemy cie w naszym składzie {user.mention}")
-        elif len(args) == 2:
-            if re.match(r"^\d{2}:\d{2}$", args[1]):
-                # Jeśli podano czas w formacie HH:MM
-                await message.channel.send(f"Klucha, wołają cię na csa o {args[1]} {user.mention}")
-            elif re.match(r"^\d{1,2}$", args[1]):
-                # Jeśli podano czas w formacie HH (np. 16 zamiast 16:00)
-                await message.channel.send(f"Klucha, wołają cię na csa o {args[1]}:00 {user.mention}")
-            else:
-                # Jeśli podano niepoprawny format
-                await message.channel.send(f"Klucha wbijaj na csa potrzebujemy cie w naszym składzie {user.mention}")
-
     if message.content == "!infoplaster" and message.channel.id == 1346496307023581274:
         stats = load_json(STATS_FILE)
         history = load_json(STATS_HISTORY_FILE)
