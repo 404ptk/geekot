@@ -124,6 +124,7 @@ async def get_discordfaceit_stats():
 
             # Fetch last 5 matches
             last_matches_str = "N/A"
+            streak_emoji = ""
             if pid:
                 matches = get_faceit_player_matches(pid, limit=5)
                 if matches:
@@ -134,6 +135,12 @@ async def get_discordfaceit_stats():
                         elif res == '0': outcomes.append('L')
                         else: outcomes.append('?')
                     last_matches_str = '/'.join(outcomes)
+                    
+                    if len(outcomes) >= 3:
+                        if outcomes[:3] == ['W', 'W', 'W']:
+                            streak_emoji = " 🔥"
+                        elif outcomes[:3] == ['L', 'L', 'L']:
+                            streak_emoji = " 😭"
 
             # ELO Diff logic
             elo_diff = 0
@@ -148,7 +155,8 @@ async def get_discordfaceit_stats():
                 'level': player_level if isinstance(player_level, int) else 0,
                 'elo': player_elo if isinstance(player_elo, int) else 0,
                 'elo_full_str': elo_full_str,
-                'last_matches': last_matches_str
+                'last_matches': last_matches_str,
+                'streak_emoji': streak_emoji
             })
 
     player_stats.sort(key=lambda x: (x['elo'], x['level']), reverse=True)
@@ -189,7 +197,7 @@ async def get_discordfaceit_stats():
                     daily_diff_str = f" \n📅 **Dobowy**: {'+' if d_diff > 0 else ''}{d_diff}"
 
         padded_elo = player['elo_full_str'].ljust(max_elo_len)
-        value_str = f"```\n{padded_elo} | LVL: {player['level']} | {player['last_matches']}\n```" + daily_diff_str
+        value_str = f"```\n{padded_elo} | LVL: {player['level']} | {player['last_matches']}{player['streak_emoji']}\n```" + daily_diff_str
 
         embed.add_field(
             name=f"{rank_emoji} **{player['nickname']}** {flag} {position_change}",
