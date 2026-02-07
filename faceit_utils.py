@@ -77,6 +77,7 @@ def get_faceit_match_details(match_id):
                 "deaths": int(player["player_stats"]["Deaths"]),
                 "assists": int(player["player_stats"]["Assists"]),
                 "headshots": int(player["player_stats"]["Headshots %"]),
+                "adr": player["player_stats"].get("ADR", "0"),
             })
     # Determine final score (e.g., 13:11)
     score = None
@@ -261,9 +262,7 @@ async def get_last_match_stats(nickname):
         color=discord.Color.orange()
     )
     embed.set_thumbnail(url=avatar_url)
-    match_summary = "```"
-    match_summary += f"{'Gracz'.ljust(19)} {'🔪 K/D/A'.ljust(10)} {'🎯 HS'.ljust(7)} {'K/D'.ljust(6)}\n"
-    match_summary += "-" * 45 + "\n"
+    # Find player's team
     player_team = None
     for team_name, team_data in match_stats["teams"].items():
         for player in team_data["players"]:
@@ -272,27 +271,77 @@ async def get_last_match_stats(nickname):
                 break
         if player_team:
             break
+
     players_list = []
-    for team_name, team_data in match_stats["teams"].items():
-        if team_name == player_team:
-            for player in team_data["players"]:
-                kills = player.get("kills", 0)
-                deaths = player.get("deaths", 0)
-                assists = player.get("assists", 0)
-                hs = player.get("headshots", 0)
-                kd_ratio = kills / deaths if deaths > 0 else kills
-                players_list.append({
-                    "nickname": player["nickname"],
-                    "kills": kills,
-                    "deaths": deaths,
-                    "assists": assists,
-                    "hs": hs,
-                    "kd_ratio": kd_ratio
-                })
-    players_list.sort(key=lambda x: x["kills"], reverse=True)
-    for player in players_list:
-        stats = f"{player['kills']}/{player['deaths']}/{player['assists']}"
-        match_summary += f"{player['nickname'].ljust(20)} {stats.ljust(11)} {str(player['hs']).ljust(5)} {player['kd_ratio']:.2f}\n"
+    if player_team:
+        for player in match_stats["teams"][player_team]["players"]:
+            kills = player.get("kills", 0)
+            deaths = player.get("deaths", 0)
+            assists = player.get("assists", 0)
+            hs = player.get("headshots", 0)
+            adr = player.get("adr", "0")
+            try:
+                adr_val = float(adr)
+            except ValueError:
+                adr_val = 0.0
+            
+            kd_ratio = kills / deaths if deaths > 0 else float(kills)
+            
+            players_list.append({
+                "nickname": player["nickname"],
+                "kills": kills,
+                "deaths": deaths,
+                "assists": assists,
+                "hs": hs,
+                "adr": adr_val,
+                "kd_ratio": kd_ratio,
+                "kda_str": f"{kills}/{deaths}/{assists}",
+                "adr_str": f"{adr_val:.0f}",
+                "hs_str": str(hs),
+                "kd_str": f"{kd_ratio:.2f}"
+            })
+
+    # Sort by ADR (descending)
+    players_list.sort(key=lambda x: x["adr"], reverse=True)
+
+    # Calculate dynamic widths
+    # Headers: Gracz, K/D/A, K/D, HS, ADR
+    # Base widths (min length = header length)
+    w_nick = len("Gracz")
+    w_kda = len("K/D/A")
+    w_kd = len("K/D")
+    w_hs = len("HS")
+    w_adr = len("ADR")
+
+    for p in players_list:
+        w_nick = max(w_nick, len(p["nickname"]))
+        w_kda = max(w_kda, len(p["kda_str"]))
+        w_kd = max(w_kd, len(p["kd_str"]))
+        w_hs = max(w_hs, len(p["hs_str"]))
+        w_adr = max(w_adr, len(p["adr_str"]))
+
+    # Add padding (2 spaces)
+    pad = 2
+    w_nick += pad
+    w_kda += pad
+    w_kd += pad
+    w_hs += pad
+    w_adr += pad
+
+    # Construct table
+    match_summary = "```\n"
+    # Header
+    match_summary += f"{'Gracz'.ljust(w_nick)}{'K/D/A'.ljust(w_kda)}{'K/D'.ljust(w_kd)}{'HS'.ljust(w_hs)}{'ADR'.ljust(w_adr)}\n"
+    match_summary += "-" * (w_nick + w_kda + w_kd + w_hs + w_adr) + "\n"
+
+    for p in players_list:
+        match_summary += (
+            f"{p['nickname'].ljust(w_nick)}"
+            f"{p['kda_str'].ljust(w_kda)}"
+            f"{p['kd_str'].ljust(w_kd)}"
+            f"{p['hs_str'].ljust(w_hs)}"
+            f"{p['adr_str'].ljust(w_adr)}\n"
+        )
     match_summary += "```"
     embed.add_field(
         name=f"📊 Statystyki",

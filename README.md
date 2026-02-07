@@ -1,5 +1,9 @@
 # Geekot Discord Bot
 
+### 📅 Changelog (07.02.2026)
+- **/discordfaceit**: Added form emojis (🔥/😭), improved table layout, added last 5 matches history (W/L).
+- **/last**: Added ADR column, sorting by ADR (descending), reorganized columns.
+
 **Geekot** is an advanced, multi-purpose Discord bot created for the community of gamers and enthusiasts of CS2, football, and streaming. The bot integrates with multiple external APIs (Faceit, Leetify, YouTube, Twitch/Kick, Football API), providing real-time statistics and notifications.
 
 ## Key Features
