@@ -1,70 +1,70 @@
-# 🤖 Geekot Discord Bot
+# Geekot Discord Bot
 
-**Geekot** to zaawansowany, wielofunkcyjny bot Discord stworzony z myślą o społeczności graczy i entuzjastów CS2, piłki nożnej oraz streamingu. Bot integruje się z wieloma zewnętrznymi API (Faceit, Leetify, YouTube, Twitch/Kick, Football API), dostarczając statystyki i powiadomienia w czasie rzeczywistym.
+**Geekot** is an advanced, multi-purpose Discord bot created for the community of gamers and enthusiasts of CS2, football, and streaming. The bot integrates with multiple external APIs (Faceit, Leetify, YouTube, Twitch/Kick, Football API), providing real-time statistics and notifications.
 
-## Kluczowe Funkcjonalności
+## Key Features
 
-### Integracja z Faceit & CS2
-Najbardziej rozbudowany moduł bota, oferujący głęboki wgląd w statystyki graczy.
-- **/faceit [nick]** – Szczegółowe statystyki gracza (ELO, poziom, ostatnie mecze).
-- **/last [nick]** – Analiza ostatniego meczu wraz z wynikiem (np. 13:11), mapą i statystykami gracza.
-- **/discordfaceit** – **Unikalny Ranking Serwera**. Bot śledzi postępy graczy z Discorda, sortuje ich wg ELO i pokazuje:
-  - Zmianę pozycji w rankingu (awans/spadek).
-  - Różnicę ELO względem ostatniego sprawdzenia.
-  - **Dobowy przyrost ELO** – automatyczny system snapshotów, który resetuje się o północy, pokazując "formę dnia".
-- **/masny** – Specjalny licznik miejsc zajmowanych przez lokalną legendę, Masnego. Pozwala śledzić historię jego występów.
+### Faceit & CS2 Integration
+The most extensive module of the bot, offering deep insight into player statistics.
+- **/faceit [nick]** - Detailed player statistics (ELO, level, recent matches).
+- **/last [nick]** - Analysis of the last match with the result (e.g. 13:11), map, and player statistics.
+- **/discordfaceit** - **Unique Server Ranking**. The bot tracks the progress of Discord players, sorts them by ELO and shows:
+  - Rank position change (promotion/demotion).
+  - ELO difference compared to the last check.
+  - **Daily ELO gain** - automatic snapshot system that resets at midnight, showing "form of the day".
+- **/masny** - Special counter for places taken by the local legend, Masny. Allows tracking his performance history.
 
-### Zaawansowane Statystyki Leetify
-- **/leetify [nick/steam_id]** – Pobiera dane z Leetify (nawet jeśli profil jest ukryty, o ile API ma dostęp).
-- **Automatyczny Ranking Statystyk** – Bot cache'uje statystyki całej grupy graczy raz dziennie i przy każdym wywołaniu komendy przyznaje medale (🥇, 🥈, 🥉) lub "nagrodę pocieszenia" (💩) za konkretne statystyki (Aim, Reakcja, Preaim, Utility) na tle grupy znajomych.
+### Leetify Advanced Statistics
+- **/leetify [nick/steam_id]** - Fetches data from Leetify (even if the profile is hidden, provided the API has access).
+- **Automatic Stats Ranking** - The bot caches statistics for a group of players once a day and upon command invocation awards medals or a "consolation prize" for specific statistics (Aim, Reaction, Preaim, Utility) against the friend group.
 
-### Piłka Nożna (Football API)
-Kompleksowe śledzenie wyników ulubionych drużyn i lig.
-- **/tabela**, **/liga** – Aktualne tabele i statystyki ligowe.
-- **/ostatniemecze**, **/najblizszemecze** – Wyniki i terminarz konkretnych klubów.
-- **/sklad** – Informacje o składzie drużyny.
+### Football (Football API)
+Comprehensive tracking of favorite teams and league results.
+- **/tabela**, **/liga** - Current league tables and statistics.
+- **/ostatniemecze**, **/najblizszemecze** - Results and schedule for specific clubs.
+- **/sklad** - Team squad information.
 
-### Powiadomienia Streamingowe & YouTube
-- **YouTube Watcher** – Autorski system monitorowania kanałów YouTube oparty na RSS (bez zużywania limitów API Google). Automatycznie wykrywa nowe filmy, rozwiązuje niestandardowe URL kanałów i publikuje eleganckie embedy na Discordzie.
-- **/stan [twitch/kick]** – Szybkie sprawdzanie statusu streamera na platformach Twitch i Kick.
+### Streaming Notifications & YouTube
+- **YouTube Watcher** - Proprietary YouTube channel monitoring system based on RSS (without consuming Google API quotas). Automatically detects new videos, resolves custom channel URLs, and publishes elegant embeds on Discord.
+- **/stan [twitch/kick]** - Quick check of streamer status on Twitch and Kick platforms.
 
-### Rozrywka i Organizacja
-- **/wymowki** – Baza losowych wymówek po przegranym meczu (z systemem dodawania przez użytkowników i autouzupełnianiem).
-- **/gry** – Zarządzanie listą gier do wspólnego ogrania (Backlog).
-- **/wyzwania** – Losowanie wyzwań do CS2.
-- **Detekcja obecności** – System "Anti-Plaster", który wykrywa pojawienie się konkretnego użytkownika online i zlicza jego połączenia w ciągu dnia.
+### Entertainment and Organization
+- **/wymowki** - Database of random excuses after a lost match (with user submission system and autocomplete).
+- **/gry** - Management of games list to play together (Backlog).
+- **/wyzwania** - Random CS2 challenges.
+- **Presence Detection** - "Anti-Plaster" system that detects the appearance of a specific user online and counts their connections during the day.
 
-## Technologie
+## Technologies
 
-Projekt oparty jest na **Python 3** i bibliotece **discord.py**. Wykorzystuje nowoczesne funkcje Discorda:
-- **Slash Commands** (app_commands) dla intuicyjnej obsługi.
-- **Tasks & Loops** do zadań w tle (monitorowanie YouTube, resetowanie statystyk dobowych).
-- **Asynchroniczność** dla szybkiego działania bez blokowania wątków.
-- **JSON & TXT** jako lekka baza danych dla konfiguracji i stanu.
+The project is based on **Python 3** and the **discord.py** library. It uses modern Discord features:
+- **Slash Commands** (app_commands) for intuitive usage.
+- **Tasks & Loops** for background tasks (YouTube monitoring, daily stats reset).
+- **Asynchronous** operations for fast performance without blocking threads.
+- **JSON & TXT** as a lightweight database for configuration and state.
 
-## Instalacja i Konfiguracja
+## Installation and Configuration
 
-1. Sklonuj repozytorium.
-2. Zainstaluj wymagane biblioteki:
+1. Clone the repository.
+2. Install required libraries:
    ```bash
    pip install -r requirements.txt
    ```
-3. Uzupełnij pliki w folderze `txt/` odpowiednimi kluczami API i tokenami:
-   - `discord_token.txt` (Token bota)
-   - `faceit_api.txt` (Klucz API Faceit)
-   - `leetify_api.txt` (Token/Klucz Leetify)
-   - `kick_client_id.txt` / `twitch_client_id.txt` (Dla modułów streamingowych)
+3. Fill the files in the `txt/` folder with appropriate API keys and tokens:
+   - `discord_token.txt` (Bot Token)
+   - `faceit_api.txt` (Faceit API Key)
+   - `leetify_api.txt` (Leetify Token/Key)
+   - `kick_client_id.txt` / `twitch_client_id.txt` (For streaming modules)
    - `football-api.txt` (API-Football)
-4. Uruchom bota:
+4. Run the bot:
    ```bash
    python main.py
    ```
 
-## Struktura Projektu
+## Project Structure
 
-- **main.py** – Główny plik startowy, ładowanie modułów i pętla zdarzeń.
-- **commands/** – Moduły z komendami slash (podzielone tematycznie: football, youtube, fun, etc.).
-- **utils.py** (faceit, leetify, masny...) – Logika biznesowa i integracje z API zewnętrznymi.
-- **txt/** – Pliki konfiguracyjne i bazy danych (ignorowane w repozytorium publicznym dla bezpieczeństwa).
+- **main.py** - Main entry point, module loading, and event loop.
+- **commands/** - Modules with slash commands (grouped by topic: football, youtube, fun, etc.).
+- **utils.py** (faceit, leetify, masny...) - Business logic and external API integrations.
+- **txt/** - Configuration files and databases (ignored in public repository for security).
 
 ---
