@@ -111,20 +111,54 @@ async def get_discordfaceit_stats():
     is_same_day = daily_data.get("date") == current_date
     daily_start_map = daily_data.get("stats", {}) if is_same_day else {}
 
+    previous_stats = load_faceit_ranking()
+    previous_positions = {player['nickname']: i for i, player in enumerate(previous_stats)}
+    previous_elo_map = {player['nickname']: player['elo'] for player in previous_stats}
+
     for nickname in player_nicknames:
         player_data = get_faceit_player_data(nickname)
         if player_data:
             player_level = player_data.get('games', {}).get('cs2', {}).get('skill_level', 0)
             player_elo = player_data.get('games', {}).get('cs2', {}).get('faceit_elo', 0)
+            pid = player_data.get('player_id')
+
+            # Fetch last 5 matches
+            last_matches_str = "N/A"
+            if pid:
+                matches = get_faceit_player_matches(pid, limit=5)
+                if matches:
+                    outcomes = []
+                    for m in matches:
+                        res = m.get('stats', {}).get('Result')
+                        if res == '1': outcomes.append('W')
+                        elif res == '0': outcomes.append('L')
+                        else: outcomes.append('?')
+                    last_matches_str = '/'.join(outcomes)
+
+            # ELO Diff logic
+            elo_diff = 0
+            if nickname in previous_elo_map:
+                elo_diff = player_elo - previous_elo_map[nickname]
+            
+            elo_change_str = f" ({'+' if elo_diff > 0 else ''}{elo_diff})" if elo_diff != 0 else ""
+            elo_full_str = f"ELO: {player_elo}{elo_change_str}"
+
             player_stats.append({
                 'nickname': nickname,
                 'level': player_level if isinstance(player_level, int) else 0,
-                'elo': player_elo if isinstance(player_elo, int) else 0
+                'elo': player_elo if isinstance(player_elo, int) else 0,
+                'elo_full_str': elo_full_str,
+                'last_matches': last_matches_str
             })
+
     player_stats.sort(key=lambda x: (x['elo'], x['level']), reverse=True)
-    previous_stats = load_faceit_ranking()
-    previous_positions = {player['nickname']: i for i, player in enumerate(previous_stats)}
     
+    # Calculate Max Length for Alignment
+    max_elo_len = 0
+    for p in player_stats:
+        if len(p['elo_full_str']) > max_elo_len:
+            max_elo_len = len(p['elo_full_str'])
+
     embed = discord.Embed(
         title="📊 **Ranking Faceit**",
         description="🔹 Lista graczy uszeregowana według ELO Faceit.",
@@ -133,22 +167,16 @@ async def get_discordfaceit_stats():
     for index, player in enumerate(player_stats):
         rank_emoji = "🥇" if index == 0 else "🥈" if index == 1 else "🥉" if index == 2 else ""
         flag = "🇺🇦" if player['nickname'] == "PhesterM9" else "🇵🇱"
-        elo_diff = 0
+        
         position_change = ""
         if player['nickname'] in previous_positions:
-            # Find previous player stats
-            prev_player = next((p for p in previous_stats if p['nickname'] == player['nickname']), None)
-            if prev_player:
-                elo_diff = player['elo'] - prev_player['elo']
-                prev_pos = previous_positions[player['nickname']]
-                if prev_pos > index:
-                    position_change = "\t⬆️"
-                elif prev_pos < index:
-                    position_change = "\t⬇️"
-                else:
-                    position_change = "\t➖"
-        
-        elo_change_str = f" ({'+' if elo_diff > 0 else ''}{elo_diff})" if elo_diff != 0 else ""
+            prev_pos = previous_positions[player['nickname']]
+            if prev_pos > index:
+                position_change = "\t⬆️"
+            elif prev_pos < index:
+                position_change = "\t⬇️"
+            else:
+                position_change = "\t➖"
         
         # Obliczanie dobowej różnicy
         daily_diff_str = ""
@@ -160,13 +188,19 @@ async def get_discordfaceit_stats():
                 if d_diff != 0:
                     daily_diff_str = f" \n📅 **Dobowy**: {'+' if d_diff > 0 else ''}{d_diff}"
 
+        padded_elo = player['elo_full_str'].ljust(max_elo_len)
+        value_str = f"```\n{padded_elo} | LVL: {player['level']} | {player['last_matches']}\n```" + daily_diff_str
+
         embed.add_field(
             name=f"{rank_emoji} **{player['nickname']}** {flag} {position_change}",
-            value=f"**ELO**: {player['elo']}{elo_change_str} | **LVL**: {player['level']}{daily_diff_str}",
+            value=value_str,
             inline=False
         )
     embed.set_footer(text="📅 Ranking generowany automatycznie | Zmiany względem poprzedniego wywołania")
-    save_faceit_ranking(player_stats)
+    
+    # Save minimal stats for next comparison
+    save_list = [{'nickname': p['nickname'], 'level': p['level'], 'elo': p['elo']} for p in player_stats]
+    save_faceit_ranking(save_list)
     return embed
 
 async def get_last_match_stats(nickname):
@@ -436,8 +470,9 @@ async def setup_faceit_commands(client: discord.Client, tree: app_commands.Comma
         guild=guild
     )
     async def discordfaceit(interaction: discord.Interaction):
+        await interaction.response.defer()
         embed = await get_discordfaceit_stats()
-        await interaction.response.send_message(embed=embed)
+        await interaction.followup.send(embed=embed)
 
     @tree.command(
         name="resetfaceitranking",
