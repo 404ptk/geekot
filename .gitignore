@@ -1,0 +1,27 @@
+# Default ignored files
+/shelf/
+/workspace.xml
+/venv/
+/venv
+/venv\
+\venv\
+\venv
+\.idea
+.__pycache__
+*faceit_api.txt
+*football-api.txt
+*leetify_api.txt
+*kick_client_id.txt
+*twitch_client_id.txt
+*kick_client_secret.txt
+*twitch_client_secret.txt
+\commands\__pycache__
+\cogs\__pycache__
+\utils\__pycache__
+*__pycache__/
+*wymowki.txt
+*user_stats.json
+*user_stats_history.json
+*masny.txt
+soundcloud_utils.py
+*discord_token.txt

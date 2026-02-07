@@ -23,27 +23,36 @@ async def setup_help_commands(client: discord.Client, tree: app_commands.Command
             "`/last [nick]` - Statystyki drużyny gracza w ostatnim meczu", inline=False)
         
         embed.add_field(name="📊 **Tabela Masnego**", value="Śledź i aktualizuj tabelę Masnego na Faceit:\n"
-            "`/masny` - Tabela Masnego\n"
+            "`/masny (opcjonalnie: [-X/X])` - Tabela Masnego\n"
             "`/resetmasny` - Resetowanie tabeli", inline=False)
         
         embed.add_field(name="🎭 **Wymówki Masnego**", value="Zarządzaj kolekcją słynnych wymówek Masnego:\n"
-            "`/wymowki`", inline=False)
+            "`/wymowki [losuj/dodaj/lista/pomoc/usun]`", inline=False)
         
         embed.add_field(name="🚀 **Spawn Masnego**", value="Spraw aby Masny był online:\n"
-            "`/spawn`", inline=False)
+            "`/spawn (opcjonalnie: [godzina])`", inline=False)
         
         embed.add_field(name="🎥 **Stan streamera**", value="Sprawdź co robi dany streamer:\n"
             "`/stan [kick/twitch] [kanał]`", inline=False)
         
         embed.add_field(name="🎯 **CS2**", value="Przeglądaj dostępne szybkie komendy dla CS2:\n"
-            "`/instant`", inline=False)
+            "`/instant [mapa]`", inline=False)
+        
+        embed.add_field(name="⚽ **Piłka nożna**", value=
+            "Statystyki lig i klubów:\n"
+            "`/tabela [liga]` - Aktualna tabela wybranej ligi\n"
+            "`/liga [liga] [statystyka]` - Statystyki ligi (np. top strzelcy)\n"
+            "`/ostatniemecze [liga] [klub]` - Ostatnie 10 meczów wybranego klubu\n"
+            "`/najblizszemecze [liga] [klub]` - Nadchodzące mecze wybranego klubu\n"
+            "`/sklad [liga] [klub]` - Skład i informacje o drużynie",
+            inline=False)
         
         embed.add_field(name="🔥 **Wyzwania CS2**",
             value="Dodawaj i losuj wyzwania do wykonania w grze CS2:\n"
-            "`/wyzwania`", inline=False)
+            "`/wyzwania [lista/dodaj/losuj/pomoc/usun]`", inline=False)
         
         embed.add_field(name="🎮 **Gry do zagrania**", value="*Zarządzaj listą gier, w które chcecie zagrać:*\n"
-                        "`/gry`", inline=False)
+                        "`/gry [dodaj/dodajopis/edytujopis/lista/pomoc/usun]`", inline=False)
         
         embed.add_field(name="📝 **Changelog**", value="Najnowsze zmiany w bocie:\n"
                         "`/changelog`", inline=False)

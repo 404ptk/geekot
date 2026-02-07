@@ -12,5 +12,23 @@
       "title": "Dodano statystyki ostatnich 20 gier do **/faceit**",
       "desc": ""
     }
+  ],
+  "04-09-2025": [
+    {
+      "title": "Dodano dokładny wynik meczu w **/last**",
+      "desc": ""
+    },
+    {
+      "title": "Dodano listę podpowiedzi do **/last** i **/faceit**",
+      "desc": ""
+    },
+    {
+      "title": "Aktualizacja **/help**",
+      "desc": ""
+    },
+    {
+      "title": "Dodano BEJLI do **/discordfaceit**",
+      "desc": ""
+    }
   ]
 }

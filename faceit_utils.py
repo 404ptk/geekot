@@ -2,6 +2,9 @@ import requests
 import json
 import discord
 from discord import app_commands
+from discord.ext import tasks
+from datetime import datetime
+import asyncio
 import os
 
 GUILD_ID = 551503797067710504
@@ -20,9 +23,10 @@ def load_token(filename):
 FACEIT_API_KEY = load_token('txt/faceit_api.txt')
 
 # Lista pseudonimów graczy do rankingu Discorda
-player_nicknames = ['utopiasz', 'radzioswir', 'PhesterM9', '-Masny-', '-mateuko', 'Kvzia', 'Kajetov', 'MlodyHubii', 'BEJLI']
+player_nicknames = ['utopiasz', 'radzioswir', 'PhesterM9', '-Masny-', '-mateuko', 'Kvzia', 'Kajetov', 'MlodyHubii']
 
 FACEIT_RANKING_FILE = "txt/faceit_ranking.txt"
+FACEIT_DAILY_STATS_FILE = "txt/faceit_daily_stats.json"
 
 def get_faceit_player_data(nickname):
     url = f'https://open.faceit.com/data/v4/players?nickname={nickname}'
@@ -74,13 +78,39 @@ def get_faceit_match_details(match_id):
                 "assists": int(player["player_stats"]["Assists"]),
                 "headshots": int(player["player_stats"]["Headshots %"]),
             })
+    # Determine final score (e.g., 13:11)
+    score = None
+    try:
+        round_stats = match_data.get("rounds", [{}])[0].get("round_stats", {})
+        score_raw = round_stats.get("Score")
+        if score_raw:
+            score = score_raw.replace(" ", "").replace("/", ":")
+        else:
+            # Fallback: read from team_stats if available
+            teams_list = match_data.get("rounds", [{}])[0].get("teams", [])
+            if len(teams_list) == 2:
+                t1 = teams_list[0].get("team_stats", {})
+                t2 = teams_list[1].get("team_stats", {})
+                s1 = t1.get("Final Score") or t1.get("Score") or t1.get("Team Score")
+                s2 = t2.get("Final Score") or t2.get("Score") or t2.get("Team Score")
+                if s1 and s2:
+                    score = f"{s1}:{s2}"
+    except Exception:
+        pass
     return {
         "map": match_data["rounds"][0]["round_stats"]["Map"],
-        "teams": teams
+        "teams": teams,
+        "score": score,
     }
 
 async def get_discordfaceit_stats():
     player_stats = []
+    # Load daily stats for comparison
+    daily_data = load_daily_stats()
+    current_date = datetime.now().strftime("%Y-%m-%d")
+    is_same_day = daily_data.get("date") == current_date
+    daily_start_map = daily_data.get("stats", {}) if is_same_day else {}
+
     for nickname in player_nicknames:
         player_data = get_faceit_player_data(nickname)
         if player_data:
@@ -94,6 +124,7 @@ async def get_discordfaceit_stats():
     player_stats.sort(key=lambda x: (x['elo'], x['level']), reverse=True)
     previous_stats = load_faceit_ranking()
     previous_positions = {player['nickname']: i for i, player in enumerate(previous_stats)}
+    
     embed = discord.Embed(
         title="📊 **Ranking Faceit**",
         description="🔹 Lista graczy uszeregowana według ELO Faceit.",
@@ -105,19 +136,33 @@ async def get_discordfaceit_stats():
         elo_diff = 0
         position_change = ""
         if player['nickname'] in previous_positions:
-            prev_player = next(p for p in previous_stats if p['nickname'] == player['nickname'])
-            elo_diff = player['elo'] - prev_player['elo']
-            prev_pos = previous_positions[player['nickname']]
-            if prev_pos > index:
-                position_change = "\t⬆️"
-            elif prev_pos < index:
-                position_change = "\t⬇️"
-            else:
-                position_change = "\t➖"
+            # Find previous player stats
+            prev_player = next((p for p in previous_stats if p['nickname'] == player['nickname']), None)
+            if prev_player:
+                elo_diff = player['elo'] - prev_player['elo']
+                prev_pos = previous_positions[player['nickname']]
+                if prev_pos > index:
+                    position_change = "\t⬆️"
+                elif prev_pos < index:
+                    position_change = "\t⬇️"
+                else:
+                    position_change = "\t➖"
+        
         elo_change_str = f" ({'+' if elo_diff > 0 else ''}{elo_diff})" if elo_diff != 0 else ""
+        
+        # Obliczanie dobowej różnicy
+        daily_diff_str = ""
+        if is_same_day:
+            start_elo = daily_start_map.get(player['nickname'])
+            # Jeśli nie ma start_elo (np. ktoś dodany w trakcie dnia), to pomiń
+            if start_elo is not None:
+                d_diff = player['elo'] - start_elo
+                if d_diff != 0:
+                    daily_diff_str = f" \n📅 **Dobowy**: {'+' if d_diff > 0 else ''}{d_diff}"
+
         embed.add_field(
             name=f"{rank_emoji} **{player['nickname']}** {flag} {position_change}",
-            value=f"**ELO**: {player['elo']}{elo_change_str} | **LVL**: {player['level']}",
+            value=f"**ELO**: {player['elo']}{elo_change_str} | **LVL**: {player['level']}{daily_diff_str}",
             inline=False
         )
     embed.set_footer(text="📅 Ranking generowany automatycznie | Zmiany względem poprzedniego wywołania")
@@ -164,14 +209,18 @@ async def get_last_match_stats(nickname):
         )
         return embed
     map_name = match_stats.get("map", "Nieznana").replace("de_", "")
+    score_display = match_stats.get("score")
+    desc = f"**Mapa:** {map_name} | {match_result}"
+    if score_display:
+        desc += f" | {score_display}"
     embed = discord.Embed(
         title=f"**Ostatni mecz gracza {player_nickname}**",
-        description=f"**Mapa:** {map_name} | {match_result}",
+        description=desc,
         color=discord.Color.orange()
     )
     embed.set_thumbnail(url=avatar_url)
     match_summary = "```"
-    match_summary += f"{'Gracz'.ljust(20)} {'🔪 K/D/A'.ljust(9)} {'🎯 HS'.ljust(6)} {'K/D'.ljust(5)}\n"
+    match_summary += f"{'Gracz'.ljust(19)} {'🔪 K/D/A'.ljust(10)} {'🎯 HS'.ljust(7)} {'K/D'.ljust(6)}\n"
     match_summary += "-" * 45 + "\n"
     player_team = None
     for team_name, team_data in match_stats["teams"].items():
@@ -221,10 +270,53 @@ def reset_faceit_ranking():
     if os.path.exists(FACEIT_RANKING_FILE):
         os.remove(FACEIT_RANKING_FILE)
 
+def load_daily_stats():
+    if os.path.exists(FACEIT_DAILY_STATS_FILE):
+        try:
+            with open(FACEIT_DAILY_STATS_FILE, "r") as f:
+                return json.load(f)
+        except Exception:
+            pass
+    return {}
+
+def save_daily_stats(data):
+    with open(FACEIT_DAILY_STATS_FILE, "w") as f:
+        json.dump(data, f)
+
+@tasks.loop(minutes=10)
+async def track_daily_elo():
+    # Sprawdź czy mamy staty na dziś
+    current_date = datetime.now().strftime("%Y-%m-%d")
+    data = load_daily_stats()
+    
+    # Jeśli data w pliku jest inna niż dzisiejsza (czyli minęła północ lub brak pliku)
+    if data.get("date") != current_date:
+        print(f"[Faceit] Nowy dzień {current_date}. Robię snapshot ELO...")
+        new_stats = {}
+        for nick in player_nicknames:
+            p_data = get_faceit_player_data(nick)
+            if p_data:
+                elo = p_data.get('games', {}).get('cs2', {}).get('faceit_elo', 0)
+                if isinstance(elo, int):
+                    new_stats[nick] = elo
+        
+        data = {
+            "date": current_date,
+            "stats": new_stats
+        }
+        save_daily_stats(data)
+        print("[Faceit] Zapisano dzienne ELO startowe.")
+
 # ----------------- SLASH COMMANDS -----------------
 
 async def setup_faceit_commands(client: discord.Client, tree: app_commands.CommandTree, guild_id: int = None):
     guild = discord.Object(id=guild_id) if guild_id else discord.Object(id=GUILD_ID)
+
+    # Autocomplete callback for Faceit nickname
+    async def faceit_nick_autocomplete(interaction: discord.Interaction, current: str):
+        query = (current or "").lower()
+        options = [n for n in player_nicknames if query in n.lower()]
+        return [app_commands.Choice(name=n, value=n) for n in options[:25]]
 
     @tree.command(
         name="faceit",
@@ -232,6 +324,7 @@ async def setup_faceit_commands(client: discord.Client, tree: app_commands.Comma
         guild=guild
     )
     @app_commands.describe(nick="Nick gracza Faceit")
+    @app_commands.autocomplete(nick=faceit_nick_autocomplete)
     async def faceit(interaction: discord.Interaction, nick: str):
         player_data = get_faceit_player_data(nick)
         if player_data is None:
@@ -332,6 +425,7 @@ async def setup_faceit_commands(client: discord.Client, tree: app_commands.Comma
         guild=guild
     )
     @app_commands.describe(nick="Nick gracza Faceit")
+    @app_commands.autocomplete(nick=faceit_nick_autocomplete)
     async def last(interaction: discord.Interaction, nick: str):
         embed = await get_last_match_stats(nick)
         await interaction.response.send_message(embed=embed)
@@ -353,6 +447,9 @@ async def setup_faceit_commands(client: discord.Client, tree: app_commands.Comma
     async def resetfaceitranking(interaction: discord.Interaction):
         reset_faceit_ranking()
         await interaction.response.send_message("✅ Ranking Faceit został zresetowany (plik faceit_ranking.txt usunięty).", ephemeral=True)
+
+    if not track_daily_elo.is_running():
+        track_daily_elo.start()
 
 MASNY_FILE = "txt/masny.txt"
 
