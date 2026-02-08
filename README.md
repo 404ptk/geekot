@@ -1,5 +1,12 @@
 # Geekot Discord Bot
 
+### 📅 Changelog (08.02.2026)
+```bash
+# Visual Updates & Polish
+- /last:
+  * Added visual indicators for searched player (⭐) and friends (👨)
+  * Improved table alignment for nicknames with emojis
+
 ### 📅 Changelog (07.02.2026)
 - **/discordfaceit**: Added form emojis (🔥/🤡), improved table layout, added last 5 matches history (W/L).
 - **/last**: Added ADR column, sorting by ADR (descending), reorganized columns.

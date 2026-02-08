@@ -305,6 +305,13 @@ async def get_last_match_stats(nickname):
     # Sort by ADR (descending)
     players_list.sort(key=lambda x: x["adr"], reverse=True)
 
+    # Decorate nicknames with emojis
+    for p in players_list:
+        if p["nickname"] == player_nickname:
+            p["nickname"] = f"⭐ {p['nickname']}"
+        elif p["nickname"] in player_nicknames:
+            p["nickname"] = f"👨 {p['nickname']}"
+
     # Calculate dynamic widths
     # Headers: Gracz, K/D/A, K/D, HS, ADR
     # Base widths (min length = header length)
