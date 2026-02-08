@@ -3,6 +3,13 @@
 ### 📅 Changelogs 
 ```bash
 ### (08.02.2026)
+- /ranking (NEW):
+  * Added server activity tracking system (Voice Time & Message Count).
+  * Displays Top 5 most active users in voice channels and text chat.
+  * Automatic time tracking with session handling.
+- /sieroty:
+  * Major visual overhaul: Added avatar for #1, dynamic ranking change indicators (⬆️/⬇️/🆕).
+  * Improved table formatting and added summary footer.
 - /last:
   * Added visual indicators for searched player (⭐) and friends (👨)
   * Improved table alignment for nicknames with emojis
