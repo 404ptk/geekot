@@ -28,6 +28,7 @@ player_nicknames = ['utopiasz', 'radzioswir', 'PhesterM9', '-Masny-', '-mateuko'
 FACEIT_RANKING_FILE = "txt/faceit_ranking.txt"
 FACEIT_DAILY_STATS_FILE = "txt/faceit_daily_stats.json"
 SIEROTY_FILE = "txt/sieroty.json"
+SIEROTY_RANKING_FILE = "txt/sieroty_ranking.json"
 
 def get_faceit_player_data(nickname):
     url = f'https://open.faceit.com/data/v4/players?nickname={nickname}'
@@ -395,6 +396,19 @@ def save_sieroty(data):
     with open(SIEROTY_FILE, "w", encoding="utf-8") as file:
         json.dump(data, file, ensure_ascii=False, indent=4)
 
+def load_sieroty_ranking():
+    if os.path.exists(SIEROTY_RANKING_FILE):
+        try:
+            with open(SIEROTY_RANKING_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            pass
+    return []
+
+def save_sieroty_ranking(data):
+    with open(SIEROTY_RANKING_FILE, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=4)
+
 @tasks.loop(minutes=10)
 async def track_daily_elo():
     # Sprawdź czy mamy staty na dziś
@@ -579,15 +593,102 @@ async def setup_faceit_commands(client: discord.Client, tree: app_commands.Comma
         except ValueError:
             pass
 
-        embed = discord.Embed(title="Ściana Wstydu", description="Lista najgorszych występów w historii:", color=discord.Color.dark_grey())
+        # Load previous ranking for comparison
+        previous_ranking = load_sieroty_ranking()
+        previous_map = {}
+        for idx, entry in enumerate(previous_ranking):
+            key = f"{entry.get('match_id')}_{entry.get('nick')}_{entry.get('date')}"
+            previous_map[key] = idx
+
+        embed = discord.Embed(
+            title="**Ściana Wstydu**", 
+            description="Sortowane po najniższym ADR.", 
+            color=discord.Color.orange()
+        )
         
-        desc = ""
+        # 1. Fetch avatar of the #1 worst player
+        if sieroty_data:
+            top_sierota = sieroty_data[0]
+            top_nick = top_sierota.get('nick')
+            if top_nick:
+                p_data = get_faceit_player_data(top_nick)
+                if p_data:
+                     avatar_url = p_data.get('avatar') or "https://www.faceit.com/static/img/avatar.png"
+                     embed.set_thumbnail(url=avatar_url)
+
+        # Pre-calc widths for alignment
+        max_adr_len = 0
+        max_kd_len = 0
+        max_hs_len = 0
+        
         for entry in sieroty_data:
-            # Prefer 'kda' field if exists, otherwise fallback to 'kd'
-            kd_val = entry.get('kda', entry.get('kd', 'N/A'))
-            desc += f"**{entry['date']}** | **{entry['nick']}**\nADR: {entry['adr']} | K/D/A: {kd_val} | HS: {entry['hs']}%\n\n"
+            kd_str = str(entry.get('kda', entry.get('kd', 'N/A')))
+            adr_str = str(entry.get('adr'))
+            hs_str = str(entry.get('hs')) + "%"
+            
+            if len(adr_str) > max_adr_len: max_adr_len = len(adr_str)
+            if len(kd_str) > max_kd_len: max_kd_len = len(kd_str)
+            if len(hs_str) > max_hs_len: max_hs_len = len(hs_str)
+
+        # Build list
+        for index, entry in enumerate(sieroty_data):
+            # Medals
+            if index == 0:
+                rank_prefix = "🥇"
+            elif index == 1:
+                rank_prefix = "🥈"
+            elif index == 2:
+                rank_prefix = "🥉"
+            else:
+                rank_prefix = f"{index + 1}."
+
+            # Position change
+            position_change = ""
+            key = f"{entry.get('match_id')}_{entry.get('nick')}_{entry.get('date')}"
+            if key in previous_map:
+                prev_pos = previous_map[key]
+                if prev_pos > index:
+                    position_change = " ⬆️" # Moved UP the list (closer to #1 Shame)
+                elif prev_pos < index:
+                    position_change = " ⬇️"
+                else:
+                    position_change = " ➖"
+            else:
+                 position_change = " 🆕"
+
+            # Stats Formatting
+            kd_val = str(entry.get('kda', entry.get('kd', 'N/A')))
+            adr_val = str(entry.get('adr'))
+            hs_val = str(entry.get('hs')) + "%"
+
+            padded_adr = adr_val.ljust(max_adr_len)
+            padded_kd = kd_val.ljust(max_kd_len)
+            padded_hs = hs_val.ljust(max_hs_len)
+
+            value_str = f"```\nADR: {padded_adr} | K/D: {padded_kd} | HS: {padded_hs}\n```"
+
+            embed.add_field(
+                name=f"{rank_prefix} **{entry['nick']}** ({entry['date']}){position_change}",
+                value=value_str,
+                inline=False
+            )
+
+        # Summary
+        worst_entry = sieroty_data[0]
+        nicks = [e['nick'] for e in sieroty_data]
+        from collections import Counter
+        if nicks:
+            common = Counter(nicks).most_common(1)
+            freq_str = f"{common[0][0]} ({common[0][1]}x)"
+        else:
+            freq_str = "Brak"
+
+        summary = f"🤡 **Stały klient:** {freq_str}"
+        embed.add_field(name="", value=summary, inline=False)
+
+        # Save ranking for next compare
+        save_sieroty_ranking(sieroty_data)
         
-        embed.description = desc
         await interaction.response.send_message(embed=embed)
 
     @sieroty_group.command(name="dodaj", description="Dodaje ostatni mecz gracza do listy sierot")
@@ -732,7 +833,7 @@ def save_masny_data(data):
         except ValueError:
             pass
 
-        embed = discord.Embed(title="💩 Ściana Wstydu - Sieroty", description="Lista najgorszych występów w historii:", color=discord.Color.dark_grey())
+        embed = discord.Embed(title="Ściana Wstydu", description="Lista najgorszych występów w historii:", color=discord.Color.orange())
         
         desc = ""
         for entry in sieroty_data:
@@ -840,3 +941,31 @@ def save_masny_data(data):
             await interaction.response.send_message(f"❌ Nie znaleziono wpisów dla gracza **{nick}**.", ephemeral=True)
             
     tree.add_command(sieroty_group, guild=guild)
+
+MASNY_FILE = "txt/masny.txt"
+
+# Zdjęcia dla miejsc 1-5
+image_links = {
+    "1": "https://cdn.discordapp.com/attachments/809156611167748176/1330901097816129596/BE8227A4-FD7F-42E4-A48F-350CD124D92B.png?ex=678fa9bc&is=678e583c&hm=ac937a4d34a9375cc56fefdbb1d228733a3fdf0daaaa720e5a020ecd302a878e&",
+    "2": "https://cdn.discordapp.com/attachments/809156611167748176/1330905145772474428/61A0B076-BD51-400C-AF19-A7B1D626B1B1.png?ex=678fad81&is=678e5c01&hm=6f06532e17ca3e49d550adc2cf84ff19f80b91e5b7b8833c7c7dc54061f40882&",
+    "3": "https://cdn.discordapp.com/attachments/809156611167748176/1330911802049036340/2698389E-237A-4840-8A63-07F996640858.png?ex=678fb3b4&is=678e6234&hm=4870f7636f0053600f02e59e2c9332c5c0272d04e8cb25d25ad643c6f2947739&",
+    "4": "https://media.discordapp.net/attachments/778302928338550865/1300471813146415176/B4B5C4D4-8E00-43CE-927B-E9CC47FB2201.png?ex=678fb441&is=678e62c1&hm=661a9436fdf6bbe526df0afa62a28adf1ae8a4dbca4dab0f333d4a4c059d9a0d&=&format=webp&quality=lossless&width=359&height=601",
+    "5": "https://cdn.discordapp.com/attachments/809156611167748176/1330906894302318592/pobrane_1.gif?ex=678faf22&is=678e5da2&hm=908f4934957c128b1531edc28da1820b096fd8a1bd35358621e794336969884e&"
+}
+
+def load_masny_data():
+    # Zwraca słownik {"1": 0, "2": 0, ...}
+    if os.path.exists(MASNY_FILE):
+        try:
+            with open(MASNY_FILE, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                for i in range(1, 6):
+                    data.setdefault(str(i), 0)
+                return data
+        except Exception:
+            pass
+    return {str(i): 0 for i in range(1, 6)}
+
+def save_masny_data(data):
+    with open(MASNY_FILE, "w", encoding="utf-8") as f:
+        json.dump(data, f)
