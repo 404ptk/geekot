@@ -1,13 +1,13 @@
 # Geekot Discord Bot
 
-### 📅 Changelog (08.02.2026)
+### 📅 Changelogs 
 ```bash
-# Visual Updates & Polish
+### (08.02.2026)
 - /last:
   * Added visual indicators for searched player (⭐) and friends (👨)
   * Improved table alignment for nicknames with emojis
 
-### 📅 Changelog (07.02.2026)
+### (07.02.2026)
 - **/discordfaceit**: Added form emojis (🔥/🤡), improved table layout, added last 5 matches history (W/L).
 - **/last**: Added ADR column, sorting by ADR (descending), reorganized columns.
 - **/sieroty**: Added "Wall of Shame" command system (`lista`, `dodaj`, `usun`) to track worst performances.
