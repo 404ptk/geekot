@@ -197,7 +197,7 @@ async def get_discordfaceit_stats():
             if start_elo is not None:
                 d_diff = player['elo'] - start_elo
                 if d_diff != 0:
-                    daily_diff_str = f" \n📅 **Dobowy**: {'+' if d_diff > 0 else ''}{d_diff}"
+                    daily_diff_str = f" ``Dobowy: {'+' if d_diff > 0 else ''}{d_diff}``"
 
         padded_elo = player['elo_full_str'].ljust(max_elo_len)
         value_str = f"```\n{padded_elo} | LVL: {player['level']} | {player['last_matches']}{player['streak_emoji']}\n```" + daily_diff_str
