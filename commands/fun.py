@@ -1,5 +1,6 @@
 import discord
 from discord import app_commands
+from discord.ext import tasks
 import json
 import os
 import time
@@ -61,6 +62,32 @@ def format_duration(seconds):
     
     return " ".join(parts) if parts else "0m"
 
+@tasks.loop(minutes=2)
+async def commit_voice_stats():
+    global active_voice_sessions
+    if not active_voice_sessions:
+        return
+        
+    stats = load_stats()
+    now = time.time()
+    changed = False
+    
+    for user_id, start_time in list(active_voice_sessions.items()):
+        duration = now - start_time
+        # Zapisz tylko jeśli minął jakiś sensowny czas (np. > 1s)
+        if duration > 1:
+            uid_str = str(user_id)
+            if uid_str not in stats:
+                stats[uid_str] = {"messages": 0, "voice_time": 0}
+            
+            stats[uid_str]["voice_time"] = stats[uid_str].get("voice_time", 0) + duration
+            # Zaktualizuj czas startu na "teraz", żeby nie liczyć podwójnie
+            active_voice_sessions[user_id] = now
+            changed = True
+            
+    if changed:
+        save_stats(stats)
+
 async def setup_fun_commands(client: discord.Client, tree: app_commands.CommandTree, guild_id: int):
     guild_obj = discord.Object(id=guild_id)
 
@@ -104,6 +131,10 @@ async def setup_fun_commands(client: discord.Client, tree: app_commands.CommandT
     client.add_listener(listener_on_message, 'on_message')
     client.add_listener(listener_on_voice_state_update, 'on_voice_state_update')
     
+    # Uruchomienie zadania w tle do zapisywania statystyk
+    if not commit_voice_stats.is_running():
+        commit_voice_stats.start()
+
     # Przeskanowanie obecnych użytkowników na głosowych przy starcie bota (resecie modułu)
     # Wymaga obiektu gildii, pobieramy go z clienta
     guild = client.get_guild(guild_id)
@@ -117,7 +148,13 @@ async def setup_fun_commands(client: discord.Client, tree: app_commands.CommandT
     @tree.command(name="ranking", description="Wyświetla ranking aktywności serwera (Voice & Messages)", guild=guild_obj)
     async def ranking(interaction: discord.Interaction):
         stats = load_stats()
-        if not stats:
+        
+        # Zbieramy wszystkich unikalnych użytkowników (z pliku i z aktywnych sesji)
+        all_user_ids = set(stats.keys())
+        for uid in active_voice_sessions.keys():
+            all_user_ids.add(str(uid))
+
+        if not all_user_ids:
             await interaction.response.send_message("Brak danych w rankingu.", ephemeral=True)
             return
 
@@ -126,20 +163,22 @@ async def setup_fun_commands(client: discord.Client, tree: app_commands.CommandT
         voice_data = []
         msg_data = []
         
-        for uid, data in stats.items():
-            v_time = data.get("voice_time", 0)
-            m_count = data.get("messages", 0)
+        for uid_str in all_user_ids:
+            # Dane z pliku
+            user_stat = stats.get(uid_str, {})
+            v_time = user_stat.get("voice_time", 0)
+            m_count = user_stat.get("messages", 0)
             
-            # Jeśli user jest aktualnie na kanale, dolicz mu czas sesji "w locie" do wyświetlenia (opcjonalne, ale fajne)
-            # Uwaga: uid w json to string, w active_sessions to int
-            if int(uid) in active_voice_sessions:
-                current_session_duration = time.time() - active_voice_sessions[int(uid)]
+            # Jeśli user jest aktualnie na kanale, dolicz mu czas sesji "w locie"
+            uid_int = int(uid_str)
+            if uid_int in active_voice_sessions:
+                current_session_duration = time.time() - active_voice_sessions[uid_int]
                 v_time += current_session_duration
 
             if v_time > 0:
-                voice_data.append((uid, v_time))
+                voice_data.append((uid_str, v_time))
             if m_count > 0:
-                msg_data.append((uid, m_count))
+                msg_data.append((uid_str, m_count))
 
         # Sortowanie
         voice_data.sort(key=lambda x: x[1], reverse=True)
@@ -149,8 +188,12 @@ async def setup_fun_commands(client: discord.Client, tree: app_commands.CommandT
         top_voice = voice_data[:5]
         top_msg = msg_data[:5]
         
-        embed = discord.Embed(title="📊 Ranking Serwerowy", color=discord.Color.gold())
+        embed = discord.Embed(title="📊 Ranking Serwerowy", color=discord.Color.pink())
+        if interaction.guild.icon:
+            embed.set_thumbnail(url=interaction.guild.icon.url)
         
+        curr_user_id = str(interaction.user.id)
+
         # Sekcja Voice
         voice_text = ""
         for idx, (uid, duration) in enumerate(top_voice, 1):
@@ -168,6 +211,14 @@ async def setup_fun_commands(client: discord.Client, tree: app_commands.CommandT
             
         if not voice_text:
             voice_text = "Brak danych."
+        else:
+            in_top = any(uid == curr_user_id for uid, _ in top_voice)
+            if not in_top:
+                for idx, (uid, duration) in enumerate(voice_data, 1):
+                    if uid == curr_user_id:
+                        time_str = format_duration(duration)
+                        voice_text += f"\n**Ty**: {idx}. **{interaction.user.display_name}**: {time_str}"
+                        break
             
         embed.add_field(name="🎙️ Czas na kanale", value=voice_text, inline=True)
 
@@ -183,10 +234,17 @@ async def setup_fun_commands(client: discord.Client, tree: app_commands.CommandT
             elif idx == 3: medal = "🥉 "
             else: medal = f"{idx}. "
             
-            msg_text += f"{medal}**{name}**: {count} wiadomości\n"
+            msg_text += f"{medal}**{name}**: {count}\n"
             
         if not msg_text:
             msg_text = "Brak danych."
+        else:
+            in_top = any(uid == curr_user_id for uid, _ in top_msg)
+            if not in_top:
+                for idx, (uid, count) in enumerate(msg_data, 1):
+                    if uid == curr_user_id:
+                        msg_text += f"\n**Ty**: {idx}. **{interaction.user.display_name}**: {count} wiadomości"
+                        break
 
         embed.add_field(name="💬 Wiadomości", value=msg_text, inline=True)
         embed.set_footer(text="Statystyki są zbierane na bieżąco.")
