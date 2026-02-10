@@ -465,9 +465,21 @@ async def setup_faceit_commands(client: discord.Client, tree: app_commands.Comma
         player_level = player_data.get('games', {}).get('cs2', {}).get('skill_level', "Brak danych")
         player_elo = player_data.get('games', {}).get('cs2', {}).get('faceit_elo', 'Brak danych')
         avatar_url = player_data.get('avatar', 'https://www.faceit.com/static/img/avatar.png')
+        
+        # Calculate daily ELO change
+        daily_elo_change = ""
+        daily_stats = load_daily_stats()
+        current_date = datetime.now().strftime("%Y-%m-%d")
+        if daily_stats.get("date") == current_date:
+            start_elo = daily_stats.get("stats", {}).get(player_nickname)
+            if start_elo is not None and isinstance(player_elo, int):
+                elo_diff = player_elo - start_elo
+                if elo_diff != 0:
+                    daily_elo_change = f" ({'+' if elo_diff > 0 else ''}{elo_diff})"
+        
         embed = discord.Embed(
             title=f'{player_nickname}',
-            description=f'**LVL:** {player_level} | **ELO:** {player_elo}',
+            description=f'**LVL:** {player_level} | **ELO:** {player_elo}{daily_elo_change}',
             color=discord.Color.orange()
         )
         embed.set_thumbnail(url=avatar_url)
