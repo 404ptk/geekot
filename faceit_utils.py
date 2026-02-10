@@ -312,10 +312,10 @@ async def get_last_match_stats(nickname):
             p["nickname"] = f"⭐ {p['nickname']}"
         elif p["nickname"] in player_nicknames:
             p["nickname"] = f"👨 {p['nickname']}"
+        else:
+            p["nickname"] = f"⬛ {p['nickname']}"
 
     # Calculate dynamic widths
-    # Headers: Gracz, K/D/A, K/D, HS, ADR
-    # Base widths (min length = header length)
     w_nick = len("Gracz")
     w_kda = len("K/D/A")
     w_kd = len("K/D")
@@ -339,8 +339,8 @@ async def get_last_match_stats(nickname):
 
     # Construct table
     match_summary = "```\n"
-    # Header
-    match_summary += f"{'Gracz'.ljust(w_nick)}{'K/D/A'.ljust(w_kda)}{'K/D'.ljust(w_kd)}{'HS'.ljust(w_hs)}{'ADR'.ljust(w_adr)}\n"
+    # Header - manually adjusted spacing for alignment
+    match_summary += f"{'Gracz'.ljust(w_nick)}{'  K/D/A'.ljust(w_kda-1)}{'  K/D'.ljust(w_kd+1)}{' HS'.ljust(w_hs)}{'ADR'.ljust(w_adr)}\n"
     match_summary += "-" * (w_nick + w_kda + w_kd + w_hs + w_adr) + "\n"
 
     for p in players_list:
