@@ -3,7 +3,7 @@ import json
 import discord
 from discord import app_commands
 from discord.ext import tasks
-from datetime import datetime
+from datetime import datetime, timedelta
 import asyncio
 import os
 
@@ -27,8 +27,10 @@ player_nicknames = ['utopiasz', 'radzioswir', 'PhesterM9', '-Masny-', '-mateuko'
 
 FACEIT_RANKING_FILE = "txt/faceit_ranking.txt"
 FACEIT_DAILY_STATS_FILE = "txt/faceit_daily_stats.json"
+FACEIT_WEEKLY_STATS_FILE = "txt/faceit_weekly_stats.json"
 SIEROTY_FILE = "txt/sieroty.json"
 SIEROTY_RANKING_FILE = "txt/sieroty_ranking.json"
+CLIENT_REF = None  # Reference to the Discord client for background tasks
 
 def get_faceit_player_data(nickname):
     url = f'https://open.faceit.com/data/v4/players?nickname={nickname}'
@@ -383,6 +385,19 @@ def save_daily_stats(data):
     with open(FACEIT_DAILY_STATS_FILE, "w") as f:
         json.dump(data, f)
 
+def load_weekly_stats():
+    if os.path.exists(FACEIT_WEEKLY_STATS_FILE):
+        try:
+            with open(FACEIT_WEEKLY_STATS_FILE, "r") as f:
+                return json.load(f)
+        except Exception:
+            pass
+    return {}
+
+def save_weekly_stats(data):
+    with open(FACEIT_WEEKLY_STATS_FILE, "w") as f:
+        json.dump(data, f, indent=4)
+
 def load_sieroty():
     if os.path.exists(SIEROTY_FILE):
         try:
@@ -409,6 +424,117 @@ def save_sieroty_ranking(data):
     with open(SIEROTY_RANKING_FILE, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=4)
 
+def get_matches_in_period(player_id, start_ts, end_ts):
+    """
+    Fetches matches for a player and filters them by timestamp.
+    start_ts and end_ts are in seconds.
+    """
+    # Fetch enough matches to cover the week. 50 should be plenty for most non-pro players.
+    limit = 50 
+    matches = get_faceit_player_matches(player_id, limit=limit)
+    
+    if not matches:
+        return []
+    
+    filtered_matches = []
+    for match in matches:
+        match_stats = match.get('stats', {})
+        # 'Match Finished At' is in milliseconds
+        finished_at_ms = match_stats.get('Match Finished At') 
+        
+        if finished_at_ms:
+            finished_at_sec = int(finished_at_ms) / 1000.0
+            if start_ts <= finished_at_sec <= end_ts:
+                filtered_matches.append(match)
+    
+    return filtered_matches
+
+async def generate_weekly_summary(client, channel_id=None):
+    """
+    Generates the weekly summary embed.
+    If run automatically (Monday), it compares with saved snapshot.
+    """
+    weekly_stats = load_weekly_stats()
+    
+    # Check "last valid snapshot"
+    if not weekly_stats:
+        # If no stats yet, we can't do full diff, but we can initialize for next week
+        return None
+
+    last_snapshot_date_str = weekly_stats.get("date") # Date of the snapshot (should be last Monday)
+    snapshot_elos = weekly_stats.get("stats", {})
+    
+    # Time range: From last snapshot date (00:00) until Now
+    # If last_snapshot_date is missing, default to 7 days ago
+    if last_snapshot_date_str:
+        try:
+            start_dt = datetime.strptime(last_snapshot_date_str, "%Y-%m-%d")
+        except ValueError:
+            start_dt = datetime.now() - timedelta(days=7)
+    else:
+        start_dt = datetime.now() - timedelta(days=7)
+
+    end_dt = datetime.now()
+    start_ts = start_dt.timestamp()
+    end_ts = end_dt.timestamp()
+
+    embed = discord.Embed(
+        title="📅 **Podsumowanie Tygodnia Faceit**",
+        description=f"Statystyki za okres: {start_dt.strftime('%Y-%m-%d')} - {end_dt.strftime('%Y-%m-%d')}",
+        color=discord.Color.orange()
+    )
+
+    for nickname in player_nicknames:
+        player_data = get_faceit_player_data(nickname)
+        if not player_data:
+            continue
+            
+        pid = player_data.get('player_id')
+        current_elo = player_data.get('games', {}).get('cs2', {}).get('faceit_elo', 0)
+        
+        if not pid:
+            continue
+
+        # Get matches
+        period_matches = get_matches_in_period(pid, start_ts, end_ts)
+        
+        # Stats calculation
+        if not period_matches:
+            #value_str = "Nie rozegrał w tym tygodniu żadnego meczu."
+            continue
+        else:
+            total_kills = 0
+            total_adr = 0.0
+            count = len(period_matches)
+            
+            for m in period_matches:
+                stats = m.get('stats', {})
+                total_kills += int(stats.get('Kills', 0))
+                total_adr += float(stats.get('ADR', 0))
+                total_kd = sum(int(m['stats'].get('Kills', 0)) for m in period_matches) / sum(int(m['stats'].get('Deaths', 1)) for m in period_matches)
+            
+            avg_kills = total_kills / count
+            avg_adr = total_adr / count
+            
+            # ELO Diff
+            elo_diff_str = ""
+            start_elo = snapshot_elos.get(nickname)
+            if start_elo is not None and isinstance(current_elo, int):
+                diff = current_elo - start_elo
+                elo_diff_str = f"{start_elo} -> {current_elo} ({'+' if diff > 0 else ''}{diff})"
+            else:
+                elo_diff_str = f"Obecne: {current_elo} (Brak danych początkowych)"
+
+            value_str = (
+                f"```ELO: {elo_diff_str} | Gier: {count}```"
+                f"```Śr. K/D: {total_kd:.2f} | Śr. kille: {avg_kills:.1f} | Śr. ADR: {avg_adr:.1f}```"
+            )
+            
+        embed.set_footer(text="Jeśli nie ma cię na liście, to znaczy że nie rozegrałeś żadnego meczu w tym tygodniu.")
+        embed.add_field(name=f"👤 {nickname}", value=value_str, inline=False)
+    
+    return embed
+
 @tasks.loop(minutes=10)
 async def track_daily_elo():
     # Sprawdź czy mamy staty na dziś
@@ -433,9 +559,51 @@ async def track_daily_elo():
         save_daily_stats(data)
         print("[Faceit] Zapisano dzienne ELO startowe.")
 
+    # --- Weekly Logic ---
+    now = datetime.now()
+    if now.weekday() == 0:  # Monday
+        weekly_stats = load_weekly_stats()
+        last_processed = weekly_stats.get("last_processed_monday")
+        
+        if last_processed != current_date:
+            print("[Faceit] Generowanie podsumowania tygodniowego...")
+            
+            # Send summary if client is available
+            if CLIENT_REF:
+                channel_id = 1461775058598105304
+                channel = CLIENT_REF.get_channel(channel_id)
+                if channel:
+                    try:
+                        embed = await generate_weekly_summary(CLIENT_REF)
+                        if embed:
+                            await channel.send(embed=embed)
+                            await channel.send("🔄 **Rozpoczynamy nowy tydzień Faceit!** Powodzenia!")
+                        else:
+                            await channel.send("ℹ️ Rozpoczęto monitorowanie statystyk tygodniowych.")
+                    except Exception as e:
+                        print(f"Błąd wysyłania podsumowania: {e}")
+            
+            # Update Snapshot for NEW Week
+            new_weekly_stats = {}
+            for nick in player_nicknames:
+                p_data = get_faceit_player_data(nick)
+                if p_data:
+                    elo = p_data.get('games', {}).get('cs2', {}).get('faceit_elo', 0)
+                    new_weekly_stats[nick] = elo
+            
+            save_data = {
+                "date": current_date,          # Start date of the current week stats
+                "last_processed_monday": current_date, # Marker that we handled this reset
+                "stats": new_weekly_stats
+            }
+            save_weekly_stats(save_data)
+            print("[Faceit] Zapisano snapshot tygodniowy.")
+
 # ----------------- SLASH COMMANDS -----------------
 
 async def setup_faceit_commands(client: discord.Client, tree: app_commands.CommandTree, guild_id: int = None):
+    global CLIENT_REF
+    CLIENT_REF = client
     guild = discord.Object(id=guild_id) if guild_id else discord.Object(id=GUILD_ID)
 
     # Autocomplete callback for Faceit nickname
@@ -586,6 +754,85 @@ async def setup_faceit_commands(client: discord.Client, tree: app_commands.Comma
     async def resetfaceitranking(interaction: discord.Interaction):
         reset_faceit_ranking()
         await interaction.response.send_message("✅ Ranking Faceit został zresetowany (plik faceit_ranking.txt usunięty).", ephemeral=True)
+
+    @tree.command(
+        name="tygodniowka",
+        description="Pokazuje podsumowanie obecnego tygodnia Faceit (symulacja)",
+        guild=guild
+    )
+    async def tygodniowka(interaction: discord.Interaction):
+        await interaction.response.defer()
+        
+        # Calculate Start of Current Week (Monday)
+        now = datetime.now()
+        start_of_week = now - timedelta(days=now.weekday())
+        start_of_week = start_of_week.replace(hour=0, minute=0, second=0, microsecond=0)
+        start_ts = start_of_week.timestamp()
+        end_ts = now.timestamp()
+        
+        # Load snapshot stats
+        weekly_stats = load_weekly_stats()
+        snapshot_elos = weekly_stats.get("stats", {})
+        
+        # Check if snapshot matches this week
+        snap_date_str = weekly_stats.get("date")
+        use_snapshot_elo = False
+        if snap_date_str:
+            try:
+                snap_date = datetime.strptime(snap_date_str, "%Y-%m-%d")
+                # If snapshot date is close to start_of_week (e.g. same day)
+                if abs((snap_date - start_of_week).days) < 2:
+                    use_snapshot_elo = True
+            except ValueError:
+                pass
+        
+        embed = discord.Embed(
+            title="📅 **Tygodniówka faceit (w trakcie)**",
+            description=f"Statystyki od: {start_of_week.strftime('%Y-%m-%d')} do teraz.",
+            color=discord.Color.orange()
+        )
+
+        for nickname in player_nicknames:
+            player_data = get_faceit_player_data(nickname)
+            if not player_data: continue
+            
+            pid = player_data.get('player_id')
+            current_elo = player_data.get('games', {}).get('cs2', {}).get('faceit_elo', 0)
+            
+            matches = get_matches_in_period(pid, start_ts, end_ts)
+            
+            if not matches:
+                #val = "Nie rozegrał w tym tygodniu żadnego meczu."
+                continue
+            else:
+                count = len(matches)
+                total_kills = sum(int(m['stats'].get('Kills', 0)) for m in matches)
+                total_adr = sum(float(m['stats'].get('ADR', 0)) for m in matches)
+                total_kd = sum(int(m['stats'].get('Kills', 0)) for m in matches) / sum(int(m['stats'].get('Deaths', 1)) for m in matches)
+                
+                avg_kills = total_kills / count
+                avg_adr = total_adr / count
+                
+                elo_info = ""
+                if use_snapshot_elo:
+                    start_elo = snapshot_elos.get(nickname)
+                    if start_elo is not None and isinstance(current_elo, int):
+                        diff = current_elo - start_elo
+                        elo_info = f"{start_elo} -> {current_elo} ({'+' if diff > 0 else ''}{diff})"
+                    else:
+                        elo_info = f"{current_elo}"
+                else:
+                    elo_info = f"{current_elo}"
+
+                val = (
+                    f"```ELO: {elo_info} | Gier: {count}```"
+                    f"```Śr. K/D: {total_kd:.2f} | Śr. kille: {avg_kills:.1f} | Śr. ADR: {avg_adr:.1f}```"
+                )
+                
+            embed.set_footer(text="Jeśli nie ma cię na liście, to znaczy że nie rozegrałeś żadnego meczu w tym tygodniu.")
+            embed.add_field(name=f"👤 {nickname}", value=val, inline=False)
+            
+        await interaction.followup.send(embed=embed)
 
     if not track_daily_elo.is_running():
         track_daily_elo.start()
