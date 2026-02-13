@@ -145,7 +145,7 @@ async def setup_fun_commands(client: discord.Client, tree: app_commands.CommandT
                     active_voice_sessions[member.id] = time.time()
 
     # --- Komendy ---
-    @tree.command(name="ranking", description="Wyświetla ranking aktywności serwera (Voice & Messages)", guild=guild_obj)
+    @tree.command(name="ranking", description="Wyświetla ranking aktywności serwera", guild=guild_obj)
     async def ranking(interaction: discord.Interaction):
         stats = load_stats()
         
@@ -199,7 +199,15 @@ async def setup_fun_commands(client: discord.Client, tree: app_commands.CommandT
         for idx, (uid, duration) in enumerate(top_voice, 1):
             user = interaction.guild.get_member(int(uid))
             name = user.display_name if user else f"User {uid}"
-            time_str = format_duration(duration)
+            total_seconds = int(duration)
+            days = total_seconds // 86400
+            hours = (total_seconds % 86400) // 3600
+            minutes = (total_seconds % 3600) // 60
+            
+            if days > 0:
+                time_str = f"{days}d {hours}h"
+            else:
+                time_str = f"{hours}h {minutes}m"
             
             medal = ""
             if idx == 1: medal = "🥇 "
