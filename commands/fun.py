@@ -258,3 +258,14 @@ async def setup_fun_commands(client: discord.Client, tree: app_commands.CommandT
         embed.set_footer(text="Statystyki są zbierane na bieżąco.")
         
         await interaction.response.send_message(embed=embed)
+    
+    @tree.command(name="avatar", description="Wyświetla avatar użytkownika", guild=guild_obj)
+    @app_commands.describe(user="Użytkownik, którego avatar chcesz zobaczyć (opcjonalnie)")
+    async def avatar(interaction: discord.Interaction, user: discord.Member = None):
+        target = user or interaction.user
+        embed = discord.Embed(title=f"Avatar {target.display_name}", color=discord.Color.pink())
+        if target.avatar:
+            embed.set_image(url=target.avatar.url)
+        else:
+            embed.description = "Ten użytkownik nie ma avatara."
+        await interaction.response.send_message(embed=embed)
