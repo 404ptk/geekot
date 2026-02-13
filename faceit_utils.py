@@ -449,40 +449,49 @@ def get_matches_in_period(player_id, start_ts, end_ts):
     
     return filtered_matches
 
-async def generate_weekly_summary(client, channel_id=None):
-    """
-    Generates the weekly summary embed.
-    If run automatically (Monday), it compares with saved snapshot.
-    """
-    weekly_stats = load_weekly_stats()
-    
-    # Check "last valid snapshot"
-    if not weekly_stats:
-        # If no stats yet, we can't do full diff, but we can initialize for next week
+def calculate_weekly_metrics(matches):
+    if not matches:
         return None
-
-    last_snapshot_date_str = weekly_stats.get("date") # Date of the snapshot (should be last Monday)
-    snapshot_elos = weekly_stats.get("stats", {})
     
-    # Time range: From last snapshot date (00:00) until Now
-    # If last_snapshot_date is missing, default to 7 days ago
-    if last_snapshot_date_str:
-        try:
-            start_dt = datetime.strptime(last_snapshot_date_str, "%Y-%m-%d")
-        except ValueError:
-            start_dt = datetime.now() - timedelta(days=7)
-    else:
-        start_dt = datetime.now() - timedelta(days=7)
+    count = len(matches)
+    wins = 0
+    total_kills = 0
+    total_deaths = 0
+    total_adr = 0.0
+    
+    for m in matches:
+        stats = m.get('stats', {})
+        total_kills += int(stats.get('Kills', 0))
+        total_deaths += int(stats.get('Deaths', 0))
+        total_adr += float(stats.get('ADR', 0))
+        if stats.get('Result') == '1':
+            wins += 1
+            
+    losses = count - wins
+    avg_kills = total_kills / count
+    avg_adr = total_adr / count
+    kd = total_kills / total_deaths if total_deaths > 0 else float(total_kills)
+    winratio = (wins / count) * 100
+    
+    return {
+        "count": count,
+        "wins": wins,
+        "losses": losses,
+        "total_kills": total_kills,
+        "avg_kills": avg_kills,
+        "avg_adr": avg_adr,
+        "kd": kd,
+        "winratio": winratio
+    }
 
-    end_dt = datetime.now()
-    start_ts = start_dt.timestamp()
-    end_ts = end_dt.timestamp()
-
+def create_weekly_stats_embed(start_ts, end_ts, snapshot_elos, title, description):
     embed = discord.Embed(
-        title="📅 **Podsumowanie Tygodnia Faceit**",
-        description=f"Statystyki za okres: {start_dt.strftime('%Y-%m-%d')} - {end_dt.strftime('%Y-%m-%d')}",
-        color=discord.Color.orange()
+        title=title,
+        description=description,
+        color=discord.Color.blue()
     )
+
+    player_stats_list = []
 
     for nickname in player_nicknames:
         player_data = get_faceit_player_data(nickname)
@@ -495,109 +504,122 @@ async def generate_weekly_summary(client, channel_id=None):
         if not pid:
             continue
 
-        # Get matches
-        period_matches = get_matches_in_period(pid, start_ts, end_ts)
+        matches = get_matches_in_period(pid, start_ts, end_ts)
+        metrics = calculate_weekly_metrics(matches)
         
-        # Stats calculation
-        if not period_matches:
-            #value_str = "Nie rozegrał w tym tygodniu żadnego meczu."
+        # ELO Diff
+        elo_diff_str = ""
+        elo_diff_val = 0
+        start_elo = snapshot_elos.get(nickname)
+        if start_elo is not None and isinstance(current_elo, int):
+            diff = current_elo - start_elo
+            elo_diff_val = diff
+            elo_diff_str = f"{start_elo} -> {current_elo} ({'+' if diff > 0 else ''}{diff})"
+        else:
+            elo_diff_str = f"{current_elo}"
+
+        player_stats_list.append({
+            "nick": nickname,
+            "metrics": metrics,
+            "elo_str": elo_diff_str,
+            "elo_diff": elo_diff_val
+        })
+
+    # Sort: Players with matches first (by count desc), then others
+    player_stats_list.sort(key=lambda x: (x['metrics']['count'] if x['metrics'] else -1), reverse=True)
+
+    for p in player_stats_list:
+        m = p['metrics']
+        if not m:
+            # val = "Nie rozegrał w tym tygodniu żadnego meczu."
             continue
         else:
-            total_kills = 0
-            total_adr = 0.0
-            count = len(period_matches)
-            
-            for m in period_matches:
-                stats = m.get('stats', {})
-                total_kills += int(stats.get('Kills', 0))
-                total_adr += float(stats.get('ADR', 0))
-                total_kd = sum(int(m['stats'].get('Kills', 0)) for m in period_matches) / sum(int(m['stats'].get('Deaths', 1)) for m in period_matches)
-            
-            avg_kills = total_kills / count
-            avg_adr = total_adr / count
-            
-            # ELO Diff
-            elo_diff_str = ""
-            start_elo = snapshot_elos.get(nickname)
-            if start_elo is not None and isinstance(current_elo, int):
-                diff = current_elo - start_elo
-                elo_diff_str = f"{start_elo} -> {current_elo} ({'+' if diff > 0 else ''}{diff})"
-            else:
-                elo_diff_str = f"Obecne: {current_elo} (Brak danych początkowych)"
-
-            value_str = (
-                f"```ELO: {elo_diff_str} | Gier: {count}```"
-                f"```Śr. K/D: {total_kd:.2f} | Śr. kille: {avg_kills:.1f} | Śr. ADR: {avg_adr:.1f}```"
+            val = (
+                f"```ELO: {p['elo_str']} | Gier: {m['count']}```"
+                f"```Śr. K/D: {m['kd']:.2f} | Śr. kille: {m['avg_kills']:.1f} | Śr. ADR: {m['avg_adr']:.1f}```"
             )
-            
-        embed.set_footer(text="Jeśli nie ma cię na liście, to znaczy że nie rozegrałeś żadnego meczu w tym tygodniu.")
-        embed.add_field(name=f"👤 {nickname}", value=value_str, inline=False)
+        embed.add_field(name=f"👤 {p['nick']}", value=val, inline=False)
     
+    embed.set_footer(text="Jeśli nie ma cię na liście, to znaczy że nie rozegrałeś żadnego meczu w tym tygodniu.")
+
+    # --- AWARDS SECTION ---
+    active_players = [p for p in player_stats_list if p['metrics']]
+    
+    if active_players:
+        embed.add_field(name="", value="Statystyki specjalne:", inline=False)
+        
+        # Helper to format line
+        def fmt(label, nick, extra):
+            return f"**{label}:** {nick} | {extra}"
+
+        # GOAT: (kd*100 + adr) max
+        goat = max(active_players, key=lambda p: p['metrics']['kd']*100 + p['metrics']['avg_adr'])
+        embed.add_field(name="🐐 GOAT tygodnia", 
+                        value=f"{goat['nick']} | K/D: {goat['metrics']['kd']:.2f} | ADR: {goat['metrics']['avg_adr']:.1f}", inline=False)
+
+        # Troll: (kd*100 + adr) min
+        troll = min(active_players, key=lambda p: p['metrics']['kd']*100 + p['metrics']['avg_adr'])
+        embed.add_field(name="🤡 Troll tygodnia", 
+                        value=f"{troll['nick']} | K/D: {troll['metrics']['kd']:.2f} | ADR: {troll['metrics']['avg_adr']:.1f}", inline=False)
+
+        # Bezrobotny: Max games
+        bezrobotny = max(active_players, key=lambda p: p['metrics']['count'])
+        embed.add_field(name="🛌 Bezrobotny tygodnia", 
+                        value=f"{bezrobotny['nick']} | Gier: {bezrobotny['metrics']['count']}", inline=False)
+
+        # Syzyf: Biggest negative elo diff
+        # Filter only negative diffs
+        negative_diffs = [p for p in active_players if p['elo_diff'] < 0]
+        if negative_diffs:
+            syzyf = min(negative_diffs, key=lambda p: p['elo_diff']) # Most negative number is minimum
+            embed.add_field(name="🪨 Syzyf tygodnia", 
+                            value=f"{syzyf['nick']} | {syzyf['elo_diff']}", inline=False)
+
+        # Best ADR
+        best_adr = max(active_players, key=lambda p: p['metrics']['avg_adr'])
+        embed.add_field(name="🔫 Najlepszy ADR", 
+                        value=f"{best_adr['nick']} | {best_adr['metrics']['avg_adr']:.1f}", inline=False)
+        
+        # Most Kills (Avg)
+        most_kills_avg = max(active_players, key=lambda p: p['metrics']['avg_kills'])
+        embed.add_field(name="💀 Najwięcej zabójstw (śr.)", 
+                        value=f"{most_kills_avg['nick']} | {most_kills_avg['metrics']['avg_kills']:.1f}", inline=False)
+
     return embed
 
-@tasks.loop(minutes=10)
-async def track_daily_elo():
-    # Sprawdź czy mamy staty na dziś
-    current_date = datetime.now().strftime("%Y-%m-%d")
-    data = load_daily_stats()
+async def generate_weekly_summary(client, channel_id=None):
+    """
+    Generates the weekly summary embed.
+    If run automatically (Monday), it compares with saved snapshot.
+    """
+    weekly_stats = load_weekly_stats()
     
-    # Jeśli data w pliku jest inna niż dzisiejsza (czyli minęła północ lub brak pliku)
-    if data.get("date") != current_date:
-        print(f"[Faceit] Nowy dzień {current_date}. Robię snapshot ELO...")
-        new_stats = {}
-        for nick in player_nicknames:
-            p_data = get_faceit_player_data(nick)
-            if p_data:
-                elo = p_data.get('games', {}).get('cs2', {}).get('faceit_elo', 0)
-                if isinstance(elo, int):
-                    new_stats[nick] = elo
-        
-        data = {
-            "date": current_date,
-            "stats": new_stats
-        }
-        save_daily_stats(data)
-        print("[Faceit] Zapisano dzienne ELO startowe.")
+    # Check "last valid snapshot"
+    if not weekly_stats:
+        return None
 
-    # --- Weekly Logic ---
-    now = datetime.now()
-    if now.weekday() == 0:  # Monday
-        weekly_stats = load_weekly_stats()
-        last_processed = weekly_stats.get("last_processed_monday")
-        
-        if last_processed != current_date:
-            print("[Faceit] Generowanie podsumowania tygodniowego...")
-            
-            # Send summary if client is available
-            if CLIENT_REF:
-                channel_id = 1461775058598105304
-                channel = CLIENT_REF.get_channel(channel_id)
-                if channel:
-                    try:
-                        embed = await generate_weekly_summary(CLIENT_REF)
-                        if embed:
-                            await channel.send(embed=embed)
-                            await channel.send("🔄 **Rozpoczynamy nowy tydzień Faceit!** Powodzenia!")
-                        else:
-                            await channel.send("ℹ️ Rozpoczęto monitorowanie statystyk tygodniowych.")
-                    except Exception as e:
-                        print(f"Błąd wysyłania podsumowania: {e}")
-            
-            # Update Snapshot for NEW Week
-            new_weekly_stats = {}
-            for nick in player_nicknames:
-                p_data = get_faceit_player_data(nick)
-                if p_data:
-                    elo = p_data.get('games', {}).get('cs2', {}).get('faceit_elo', 0)
-                    new_weekly_stats[nick] = elo
-            
-            save_data = {
-                "date": current_date,          # Start date of the current week stats
-                "last_processed_monday": current_date, # Marker that we handled this reset
-                "stats": new_weekly_stats
-            }
-            save_weekly_stats(save_data)
-            print("[Faceit] Zapisano snapshot tygodniowy.")
+    last_snapshot_date_str = weekly_stats.get("date")
+    snapshot_elos = weekly_stats.get("stats", {})
+    
+    if last_snapshot_date_str:
+        try:
+            start_dt = datetime.strptime(last_snapshot_date_str, "%Y-%m-%d")
+        except ValueError:
+            start_dt = datetime.now() - timedelta(days=7)
+    else:
+        start_dt = datetime.now() - timedelta(days=7)
+
+    end_dt = datetime.now()
+    start_ts = start_dt.timestamp()
+    end_ts = end_dt.timestamp()
+
+    return create_weekly_stats_embed(
+        start_ts, 
+        end_ts, 
+        snapshot_elos,
+        "📅 **Podsumowanie Tygodnia Faceit**",
+        f"Statystyki za okres: {start_dt.strftime('%Y-%m-%d')} - {end_dt.strftime('%Y-%m-%d')}"
+    )
 
 # ----------------- SLASH COMMANDS -----------------
 
@@ -774,63 +796,13 @@ async def setup_faceit_commands(client: discord.Client, tree: app_commands.Comma
         weekly_stats = load_weekly_stats()
         snapshot_elos = weekly_stats.get("stats", {})
         
-        # Check if snapshot matches this week
-        snap_date_str = weekly_stats.get("date")
-        use_snapshot_elo = False
-        if snap_date_str:
-            try:
-                snap_date = datetime.strptime(snap_date_str, "%Y-%m-%d")
-                # If snapshot date is close to start_of_week (e.g. same day)
-                if abs((snap_date - start_of_week).days) < 2:
-                    use_snapshot_elo = True
-            except ValueError:
-                pass
-        
-        embed = discord.Embed(
-            title="📅 **Tygodniówka faceit (w trakcie)**",
-            description=f"Statystyki od: {start_of_week.strftime('%Y-%m-%d')} do teraz.",
-            color=discord.Color.orange()
+        embed = create_weekly_stats_embed(
+            start_ts,
+            end_ts,
+            snapshot_elos,
+            "📅 **Tygodniówka faceit (w trakcie)**",
+            f"Statystyki od: {start_of_week.strftime('%Y-%m-%d')} do teraz."
         )
-
-        for nickname in player_nicknames:
-            player_data = get_faceit_player_data(nickname)
-            if not player_data: continue
-            
-            pid = player_data.get('player_id')
-            current_elo = player_data.get('games', {}).get('cs2', {}).get('faceit_elo', 0)
-            
-            matches = get_matches_in_period(pid, start_ts, end_ts)
-            
-            if not matches:
-                #val = "Nie rozegrał w tym tygodniu żadnego meczu."
-                continue
-            else:
-                count = len(matches)
-                total_kills = sum(int(m['stats'].get('Kills', 0)) for m in matches)
-                total_adr = sum(float(m['stats'].get('ADR', 0)) for m in matches)
-                total_kd = sum(int(m['stats'].get('Kills', 0)) for m in matches) / sum(int(m['stats'].get('Deaths', 1)) for m in matches)
-                
-                avg_kills = total_kills / count
-                avg_adr = total_adr / count
-                
-                elo_info = ""
-                if use_snapshot_elo:
-                    start_elo = snapshot_elos.get(nickname)
-                    if start_elo is not None and isinstance(current_elo, int):
-                        diff = current_elo - start_elo
-                        elo_info = f"{start_elo} -> {current_elo} ({'+' if diff > 0 else ''}{diff})"
-                    else:
-                        elo_info = f"{current_elo}"
-                else:
-                    elo_info = f"{current_elo}"
-
-                val = (
-                    f"```ELO: {elo_info} | Gier: {count}```"
-                    f"```Śr. K/D: {total_kd:.2f} | Śr. kille: {avg_kills:.1f} | Śr. ADR: {avg_adr:.1f}```"
-                )
-                
-            embed.set_footer(text="Jeśli nie ma cię na liście, to znaczy że nie rozegrałeś żadnego meczu w tym tygodniu.")
-            embed.add_field(name=f"👤 {nickname}", value=val, inline=False)
             
         await interaction.followup.send(embed=embed)
 
