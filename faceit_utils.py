@@ -621,6 +621,84 @@ async def generate_weekly_summary(client, channel_id=None):
         f"Statystyki za okres: {start_dt.strftime('%Y-%m-%d')} - {end_dt.strftime('%Y-%m-%d')}"
     )
 
+# ----------------- SCHEDULED TASKS -----------------
+
+@tasks.loop(minutes=10)
+async def track_daily_elo():
+    # Only run checks if client is ready
+    if not CLIENT_REF or not CLIENT_REF.is_ready():
+        return
+
+    now = datetime.now()
+    today_str = now.strftime("%Y-%m-%d")
+    
+    # --- WEEKLY SUMMARY (Monday) ---
+    weekly_stats = load_weekly_stats()
+    last_run_date = weekly_stats.get("last_run_date")
+
+    # If it is Monday and we haven't run yet today
+    if now.weekday() == 0 and last_run_date != today_str:
+        # Channel ID for weekly summary
+        target_channel_id = 1301248598108798996
+        
+        channel = CLIENT_REF.get_channel(target_channel_id)
+        if channel:
+             last_snapshot_date_str = weekly_stats.get("date")
+             try:
+                 start_dt = datetime.strptime(last_snapshot_date_str, "%Y-%m-%d") if last_snapshot_date_str else (now - timedelta(days=7))
+             except ValueError:
+                 start_dt = now - timedelta(days=7)
+
+             start_ts = start_dt.timestamp()
+             end_ts = now.timestamp()
+             snapshot_elos = weekly_stats.get("stats", {})
+
+             # Generate Summary
+             embed = create_weekly_stats_embed(
+                start_ts,
+                end_ts,
+                snapshot_elos,
+                "📅 **Podsumowanie Tygodnia Faceit**",
+                f"Statystyki za okres: {start_dt.strftime('%d-%m-%Y')} - {today_str}"
+             )
+             
+             if embed:
+                 await channel.send(embed=embed)
+                 
+                 # UPDATE SNAPSHOT for next week
+                 # Save current ELOs as new snapshot
+                 new_snapshot = {}
+                 for nick in player_nicknames:
+                     p_data = get_faceit_player_data(nick)
+                     if p_data:
+                         elo = p_data.get('games', {}).get('cs2', {}).get('faceit_elo')
+                         if isinstance(elo, int):
+                             new_snapshot[nick] = elo
+                 
+                 weekly_stats["stats"] = new_snapshot
+                 weekly_stats["date"] = today_str # Snapshot date
+                 weekly_stats["last_run_date"] = today_str 
+                 save_weekly_stats(weekly_stats)
+                 
+    # --- DAILY STATS (for comparison) ---
+    daily_stats = load_daily_stats()
+    if daily_stats.get("date") != today_str:
+        # It's a new day, save current ELOs
+        new_daily = {}
+        for nick in player_nicknames:
+            p_data = get_faceit_player_data(nick)
+            if p_data:
+                elo = p_data.get('games', {}).get('cs2', {}).get('faceit_elo')
+                if isinstance(elo, int):
+                    new_daily[nick] = elo
+        
+        daily_stats = {
+            "date": today_str,
+            "stats": new_daily
+        }
+        with open(FACEIT_DAILY_STATS_FILE, "w") as f:
+            json.dump(daily_stats, f)
+
 # ----------------- SLASH COMMANDS -----------------
 
 async def setup_faceit_commands(client: discord.Client, tree: app_commands.CommandTree, guild_id: int = None):
