@@ -855,34 +855,34 @@ async def setup_faceit_commands(client: discord.Client, tree: app_commands.Comma
         reset_faceit_ranking()
         await interaction.response.send_message("✅ Ranking Faceit został zresetowany (plik faceit_ranking.txt usunięty).", ephemeral=True)
 
-    @tree.command(
-        name="tygodniowka",
-        description="Pokazuje podsumowanie obecnego tygodnia Faceit (symulacja)",
-        guild=guild
-    )
-    async def tygodniowka(interaction: discord.Interaction):
-        await interaction.response.defer()
-        
-        # Calculate Start of Current Week (Monday)
-        now = datetime.now()
-        start_of_week = now - timedelta(days=now.weekday())
-        start_of_week = start_of_week.replace(hour=0, minute=0, second=0, microsecond=0)
-        start_ts = start_of_week.timestamp()
-        end_ts = now.timestamp()
-        
-        # Load snapshot stats
-        weekly_stats = load_weekly_stats()
-        snapshot_elos = weekly_stats.get("stats", {})
-        
-        embed = create_weekly_stats_embed(
-            start_ts,
-            end_ts,
-            snapshot_elos,
-            "📅 **Tygodniówka faceit (w trakcie)**",
-            f"Statystyki od: {start_of_week.strftime('%Y-%m-%d')} do teraz."
-        )
-            
-        await interaction.followup.send(embed=embed)
+    # @tree.command(
+    #     name="tygodniowka",
+    #     description="Pokazuje podsumowanie obecnego tygodnia Faceit (symulacja)",
+    #     guild=guild
+    # )
+    # async def tygodniowka(interaction: discord.Interaction):
+    #     await interaction.response.defer()
+    #     
+    #     # Calculate Start of Current Week (Monday)
+    #     now = datetime.now()
+    #     start_of_week = now - timedelta(days=now.weekday())
+    #     start_of_week = start_of_week.replace(hour=0, minute=0, second=0, microsecond=0)
+    #     start_ts = start_of_week.timestamp()
+    #     end_ts = now.timestamp()
+    #     
+    #     # Load snapshot stats
+    #     weekly_stats = load_weekly_stats()
+    #     snapshot_elos = weekly_stats.get("stats", {})
+    #     
+    #     embed = create_weekly_stats_embed(
+    #         start_ts,
+    #         end_ts,
+    #         snapshot_elos,
+    #         "📅 **Tygodniówka faceit (w trakcie)**",
+    #         f"Statystyki od: {start_of_week.strftime('%Y-%m-%d')} do teraz."
+    #     )
+    #         
+    #     await interaction.followup.send(embed=embed)
 
     if not track_daily_elo.is_running():
         track_daily_elo.start()
