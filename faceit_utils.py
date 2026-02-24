@@ -6,6 +6,8 @@ from discord.ext import tasks
 from datetime import datetime, timedelta
 import asyncio
 import os
+import io
+from PIL import Image, ImageDraw, ImageFont
 
 GUILD_ID = 551503797067710504
 
@@ -107,6 +109,33 @@ def get_faceit_match_details(match_id):
         "teams": teams,
         "score": score,
     }
+
+def get_faceit_match_roster(match_id):
+    """Fetches match roster with level for all players (1 API call).
+    ELO is fetched only for players in player_nicknames to minimize API calls."""
+    url = f"https://open.faceit.com/data/v4/matches/{match_id}"
+    headers = {"Authorization": f"Bearer {FACEIT_API_KEY}"}
+    response = requests.get(url, headers=headers)
+    if response.status_code != 200:
+        return {}
+    data = response.json()
+    roster = {}
+    for team_key in ["faction1", "faction2"]:
+        team = data.get("teams", {}).get(team_key, {})
+        for player in team.get("roster", []):
+            nick = player.get("nickname", "")
+            level = player.get("game_skill_level", 0)
+            roster[nick] = {
+                "elo": "",
+                "level": level,
+            }
+    # Fetch ELO for all players
+    for nick in roster:
+        p_data = get_faceit_player_data(nick)
+        if p_data:
+            elo = p_data.get('games', {}).get('cs2', {}).get('faceit_elo', '')
+            roster[nick]["elo"] = str(elo)
+    return roster
 
 async def get_discordfaceit_stats():
     player_stats = []
@@ -367,6 +396,243 @@ async def get_last_match_stats(nickname):
     )
     embed.set_footer(text="📊 Statystyki ostatniego meczu | Sprawdź swoje pod /last")
     return embed
+
+def generate_last_match_image(nickname):
+    """Generates an image with last match stats text overlaid on mirage.png background."""
+    base_dir = os.path.dirname(__file__)
+
+    # Load Roboto-Medium font
+    font_path = os.path.join(base_dir, "images", "font", "roboto", "Roboto-Medium.ttf")
+    try:
+        font_title = ImageFont.truetype(font_path, 48)
+        font_score = ImageFont.truetype(font_path, 48)
+        font_table = ImageFont.truetype(font_path, 22)
+    except (OSError, IOError):
+        font_title = ImageFont.load_default()
+        font_score = ImageFont.load_default()
+        font_table = ImageFont.load_default()
+
+    # Fetch match data from Faceit API first (to determine win/loss for background)
+    score1, score2 = "?", "?"
+    players_list = []
+    enemy_list = []
+    match_result = None  # "1" = win, "0" = loss
+    player_data = get_faceit_player_data(nickname)
+    player_nickname = ""
+    if player_data:
+        player_id = player_data['player_id']
+        player_nickname = player_data['nickname']
+        matches = get_faceit_player_matches(player_id)
+        if matches:
+            match_result = matches[0]["stats"].get("Result")
+            match_id = matches[0]["stats"].get("Match Id")
+            if match_id:
+                match_stats = get_faceit_match_details(match_id)
+                if match_stats:
+                    # --- Score ---
+                    score_raw = match_stats.get("score")  # e.g. "13:10"
+                    player_team_key = None
+                    player_team_idx = None
+                    teams_keys = list(match_stats["teams"].keys())
+                    for idx, team_key in enumerate(teams_keys):
+                        for p in match_stats["teams"][team_key]["players"]:
+                            if p["nickname"] == player_nickname:
+                                player_team_idx = idx
+                                player_team_key = team_key
+                                break
+                        if player_team_idx is not None:
+                            break
+
+                    if score_raw and ":" in score_raw:
+                        parts = score_raw.split(":")
+                        if player_team_idx is not None and len(parts) == 2:
+                            score1 = parts[player_team_idx]
+                            score2 = parts[1 - player_team_idx]
+                        else:
+                            score1, score2 = parts[0], parts[1] if len(parts) == 2 else ("?", "?")
+
+                    # Fetch roster data (ELO + level) in 1 API call
+                    roster = get_faceit_match_roster(match_id)
+
+                    # --- Players table (ally + enemy) ---
+                    def parse_team_players(team_key):
+                        result = []
+                        for p in match_stats["teams"][team_key]["players"]:
+                            kills = p.get("kills", 0)
+                            deaths = p.get("deaths", 0)
+                            assists = p.get("assists", 0)
+                            hs = p.get("headshots", 0)
+                            adr = p.get("adr", "0")
+                            try:
+                                adr_val = float(adr)
+                            except ValueError:
+                                adr_val = 0.0
+                            kd_ratio = kills / deaths if deaths > 0 else float(kills)
+
+                            # Get ELO and level from roster (no extra API calls)
+                            r = roster.get(p["nickname"], {})
+                            p_elo = r.get("elo", "")
+                            p_level = r.get("level", 0)
+
+                            result.append({
+                                "nickname": p["nickname"],
+                                "kda_str": f"{kills}/{deaths}/{assists}",
+                                "kd_str": f"{kd_ratio:.2f}",
+                                "hs_str": f"{hs}%",
+                                "adr_str": f"{adr_val:.0f}",
+                                "adr_val": adr_val,
+                                "elo_str": p_elo,
+                                "level": p_level,
+                            })
+                        result.sort(key=lambda x: x["adr_val"], reverse=True)
+                        return result
+
+                    if player_team_key:
+                        players_list = parse_team_players(player_team_key)
+                        # Enemy team
+                        enemy_team_key = [k for k in teams_keys if k != player_team_key]
+                        if enemy_team_key:
+                            enemy_list = parse_team_players(enemy_team_key[0])
+
+    # Choose background based on map and match result (win/loss)
+    # Map name from match_stats, e.g. "de_mirage" -> "mirage"
+    map_name = "mirage"  # default fallback
+    if player_data and 'match_stats' in dir() and match_stats:
+        raw_map = match_stats.get("map", "").replace("de_", "")
+        if raw_map:
+            map_name = raw_map
+
+    if match_result == "1":
+        bg_file = f"{map_name}.png"
+    else:
+        bg_file = f"{map_name}-lose.png"
+
+    bg_path = os.path.join(base_dir, "images", "last", bg_file)
+    # Fallback to mirage if file doesn't exist
+    if not os.path.exists(bg_path):
+        bg_path = os.path.join(base_dir, "images", "last", "mirage.png")
+    img = Image.open(bg_path).copy()
+    draw = ImageDraw.Draw(img)
+
+    # Helper: draw text centered in a rectangle
+    def draw_centered(text, rect, font):
+        rx1, ry1, rx2, ry2 = rect
+        bbox = draw.textbbox((0, 0), text, font=font)
+        tw = bbox[2] - bbox[0]
+        th = bbox[3] - bbox[1]
+        x = rx1 + (rx2 - rx1 - tw) // 2
+        y = ry1 + (ry2 - ry1 - th) // 2
+        draw.text((x, y), text, fill="white", font=font)
+
+    # Helper: draw text left-aligned, vertically centered in a rectangle
+    def draw_left(text, rect, font):
+        rx1, ry1, rx2, ry2 = rect
+        bbox = draw.textbbox((0, 0), text, font=font)
+        th = bbox[3] - bbox[1]
+        y = ry1 + (ry2 - ry1 - th) // 2
+        draw.text((rx1, y), text, fill="white", font=font)
+
+    # Title text
+    draw_centered(f"Ostatni mecz gracza {nickname}", (0, 3, 1200, 75), font_title)
+
+    # Draw score numbers
+    draw_centered(score1, (48, 162, 131, 264), font_score)
+    draw_centered(score2, (48, 399, 131, 502), font_score)
+
+    # Draw player stats table
+    # Row 1 starts at y=120, each row is 41px tall
+    # Columns: Name(143-559), K/D/A(559-704), K/D(708-845), HS(849-958), ADR(962-1160)
+    row_y = 120
+    row_h = 41
+    # Load person icon (PNG)
+    person_icon = None
+    try:
+        icon_path = os.path.join(os.path.dirname(__file__), "images", "last", "person.png")
+        person_icon = Image.open(icon_path).resize((40, 40)).convert("RGBA")
+    except Exception:
+        pass
+
+    # Load premade icon (PNG)
+    premade_icon = None
+    try:
+        icon_path = os.path.join(os.path.dirname(__file__), "images", "last", "premade.png")
+        premade_icon = Image.open(icon_path).resize((40, 40)).convert("RGBA")
+    except Exception:
+        pass
+
+    player_nick = player_data.get("nickname", "") if player_data else ""
+
+    for i, p in enumerate(players_list[:5]):
+        y1 = row_y + i * row_h
+        if i >= 3:
+            y1 -= 5
+        y2 = y1 + row_h
+
+        # Searched player -> person icon; premade (in player_nicknames) -> premade icon
+        if p["nickname"] == player_nick:
+            if person_icon:
+                icon_y = y1 + (row_h - 40) // 2
+                img.paste(person_icon, (163, icon_y), person_icon)
+        elif p["nickname"] in player_nicknames:
+            if premade_icon:
+                icon_y = y1 + (row_h - 40) // 2
+                img.paste(premade_icon, (163, icon_y), premade_icon)
+
+        draw_left(p["nickname"], (213, y1, 559, y2), font_table)
+        # ELO + level icon
+        lvl = p.get("level", 0)
+        if lvl:
+            try:
+                lvl_icon_path = os.path.join(base_dir, "images", "fc-lvl", f"{lvl}.png")
+                lvl_icon = Image.open(lvl_icon_path).resize((30, 30)).convert("RGBA")
+                icon_x = 417
+                icon_y_pos = y1 + (row_h - 30) // 2
+                img.paste(lvl_icon, (icon_x, icon_y_pos), lvl_icon)
+                # Draw ELO text to the right of icon
+                draw_left(p.get("elo_str", ""), (icon_x + 34, y1, 555, y2), font_table)
+            except Exception:
+                draw_left(p.get("elo_str", ""), (417, y1, 555, y2), font_table)
+        else:
+            draw_left(p.get("elo_str", ""), (417, y1, 555, y2), font_table)
+        draw_centered(p["kda_str"], (559, y1, 704, y2), font_table)
+        draw_centered(p["kd_str"], (708, y1, 845, y2), font_table)
+        draw_centered(p["hs_str"], (849, y1, 958, y2), font_table)
+        draw_centered(p["adr_str"], (962, y1, 1160, y2), font_table)
+
+    # Draw enemy stats table
+    # First row at y=361, same 41px height, same columns
+    enemy_row_y = 361
+    for i, p in enumerate(enemy_list[:5]):
+        y1 = enemy_row_y + i * row_h
+        if i >= 3:
+            y1 -= 5
+        y2 = y1 + row_h
+        draw_left(p["nickname"], (213, y1, 559, y2), font_table)
+        # ELO + level icon
+        lvl = p.get("level", 0)
+        if lvl:
+            try:
+                lvl_icon_path = os.path.join(base_dir, "images", "fc-lvl", f"{lvl}.png")
+                lvl_icon = Image.open(lvl_icon_path).resize((30, 30)).convert("RGBA")
+                icon_x = 417
+                icon_y_pos = y1 + (row_h - 30) // 2
+                img.paste(lvl_icon, (icon_x, icon_y_pos), lvl_icon)
+                draw_left(p.get("elo_str", ""), (icon_x + 34, y1, 555, y2), font_table)
+            except Exception:
+                draw_left(p.get("elo_str", ""), (417, y1, 555, y2), font_table)
+        else:
+            draw_left(p.get("elo_str", ""), (417, y1, 555, y2), font_table)
+        draw_centered(p["kda_str"], (559, y1, 704, y2), font_table)
+        draw_centered(p["kd_str"], (708, y1, 845, y2), font_table)
+        draw_centered(p["hs_str"], (849, y1, 958, y2), font_table)
+        draw_centered(p["adr_str"], (962, y1, 1160, y2), font_table)
+
+    # Save to bytes buffer and return as discord.File
+    buffer = io.BytesIO()
+    img.save(buffer, format="PNG")
+    buffer.seek(0)
+    return discord.File(fp=buffer, filename="last_match.png")
+
 
 def reset_faceit_ranking():
     if os.path.exists(FACEIT_RANKING_FILE):
@@ -835,6 +1101,18 @@ async def setup_faceit_commands(client: discord.Client, tree: app_commands.Comma
     async def last(interaction: discord.Interaction, nick: str):
         embed = await get_last_match_stats(nick)
         await interaction.response.send_message(embed=embed)
+
+    @tree.command(
+        name="lastimage",
+        description="Pokazuje statystyki ostatniego meczu jako obraz",
+        guild=guild
+    )
+    @app_commands.describe(nick="Nick gracza Faceit")
+    @app_commands.autocomplete(nick=faceit_nick_autocomplete)
+    async def lastimage(interaction: discord.Interaction, nick: str):
+        await interaction.response.defer()
+        image_file = generate_last_match_image(nick)
+        await interaction.followup.send(file=image_file)
 
     @tree.command(
         name="discordfaceit",
