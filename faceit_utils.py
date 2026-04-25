@@ -84,6 +84,26 @@ def get_faceit_match_details(match_id):
                 "assists": int(player["player_stats"]["Assists"]),
                 "headshots": int(player["player_stats"]["Headshots %"]),
                 "adr": player["player_stats"].get("ADR", "0"),
+                "multikills": {
+                    "2k": int(player["player_stats"].get("Double Kills", 0)),
+                    "3k": int(player["player_stats"].get("Triple Kills", 0)),
+                    "4k": int(player["player_stats"].get("Quadro Kills", 0)),
+                    "5k": int(player["player_stats"].get("Penta Kills", 0))
+                },
+                "entry": {
+                    "count": int(player["player_stats"].get("Entry Count", 0)),
+                    "wins": int(player["player_stats"].get("Entry Wins", 0))
+                },
+                "clutch": {
+                    "count": int(player["player_stats"].get("1v1Count", 0)) + int(player["player_stats"].get("1v2Count", 0)),
+                    "wins": int(player["player_stats"].get("1v1Wins", 0)) + int(player["player_stats"].get("1v2Wins", 0))
+                },
+                "flash": {
+                    "count": int(player["player_stats"].get("Flash Count", 0)),
+                    "successes": int(player["player_stats"].get("Flash Successes", 0))
+                },
+                "utility_dmg": int(player["player_stats"].get("Utility Damage", 0)),
+                "kr_ratio": player["player_stats"].get("K/R Ratio", "0"),
             })
     # Determine final score (e.g., 13:11)
     score = None
@@ -284,18 +304,21 @@ async def get_last_match_stats(nickname):
             color=discord.Color.red()
         )
         return embed
-    map_name = match_stats.get("map", "Nieznana").replace("de_", "")
-    score_display = match_stats.get("score")
-    desc = f"**Mapa:** {map_name} | {match_result}"
-    if score_display:
-        desc += f" | {score_display}"
-    embed = discord.Embed(
-        title=f"**Ostatni mecz gracza {player_nickname}**",
-        description=desc,
-        color=discord.Color.orange()
-    )
-    embed.set_thumbnail(url=avatar_url)
-    # Find player's team
+    # Fetch team ratings
+    url = f"https://open.faceit.com/data/v4/matches/{match_id}"
+    response = requests.get(url, headers={"Authorization": f"Bearer {FACEIT_API_KEY}"})
+    ratings = {}
+    if response.status_code == 200:
+        match_general = response.json()
+        for faction in ["faction1", "faction2"]:
+            f_data = match_general.get("teams", {}).get(faction, {})
+            f_id = f_data.get("faction_id")
+            f_name = f_data.get("name")
+            f_rating = f_data.get("stats", {}).get("rating", 0)
+            if f_id:
+                ratings[f_id] = {"name": f_name, "rating": f_rating}
+
+    # Find player's team and enemy team
     player_team = None
     for team_name, team_data in match_stats["teams"].items():
         for player in team_data["players"]:
@@ -305,9 +328,46 @@ async def get_last_match_stats(nickname):
         if player_team:
             break
 
+    enemy_team = None
+    for tid in match_stats["teams"]:
+        if tid != player_team:
+            enemy_team = tid
+
+    team_rating_str = ""
+    if ratings and player_team and enemy_team:
+        p_team = ratings.get(player_team, {})
+        e_team = ratings.get(enemy_team, {})
+        p_name = p_team.get("name", "Twoja drużyna")
+        p_rating = p_team.get("rating", 0)
+        e_name = e_team.get("name", "Przeciwnik")
+        e_rating = e_team.get("rating", 0)
+        
+        diff = p_rating - e_rating
+        diff_str = f"+{diff}" if diff > 0 else str(diff)
+        
+        team_rating_str = f"MMR: {p_rating} VS ({e_rating}) | ({diff_str})"
+
+    map_name = match_stats.get("map", "Nieznana").replace("de_", "")
+    score_display = match_stats.get("score")
+    desc = f"**Mapa:** {map_name} | {match_result}"
+    if score_display:
+        desc += f" | {score_display}"
+    if team_rating_str:
+        desc += f"\n{team_rating_str}"
+        
+    embed = discord.Embed(
+        title=f"**Ostatni mecz gracza {player_nickname}**",
+        description=desc,
+        color=discord.Color.orange()
+    )
+    embed.set_thumbnail(url=avatar_url)
+
     players_list = []
+    player_detailed_stats = None
     if player_team:
         for player in match_stats["teams"][player_team]["players"]:
+            if player["nickname"] == player_nickname:
+                player_detailed_stats = player
             kills = player.get("kills", 0)
             deaths = player.get("deaths", 0)
             assists = player.get("assists", 0)
@@ -388,6 +448,30 @@ async def get_last_match_stats(nickname):
         value=match_summary if match_summary else "Brak danych",
         inline=False
     )
+
+    if player_detailed_stats:
+        pds = player_detailed_stats
+        mk = pds.get("multikills", {"2k":0, "3k":0, "4k":0, "5k":0})
+        entry = pds.get("entry", {"count":0, "wins":0})
+        clutch = pds.get("clutch", {"count":0, "wins":0})
+        flash = pds.get("flash", {"count":0, "successes":0})
+        udmg = pds.get("utility_dmg", 0)
+        kr = pds.get("kr_ratio", "0")
+        
+        adv_stats = (
+            f"**Kills:** 2x: `{mk['2k']}` | 3x: `{mk['3k']}` | 4x: `{mk['4k']}` | 5x: `{mk['5k']}`\n"
+            f"**Entry:** `{entry['wins']}/{entry['count']}`\n"
+            f"**Clutche:** `{clutch['wins']}/{clutch['count']}`\n"
+            f"**Flashe:** `{flash['successes']}/{flash['count']}`\n"
+            f"**Utility Dmg:** `{udmg}`\n"
+            f"**K/R Ratio:** `{kr}`"
+        )
+        embed.add_field(
+            name=f"Statystyki gracza {player_nickname}",
+            value=adv_stats,
+            inline=False
+        )
+
     match_link = f"https://www.faceit.com/en/cs2/room/{match_id}/scoreboard"
     embed.add_field(
         name="",
@@ -1099,8 +1183,9 @@ async def setup_faceit_commands(client: discord.Client, tree: app_commands.Comma
     @app_commands.describe(nick="Nick gracza Faceit")
     @app_commands.autocomplete(nick=faceit_nick_autocomplete)
     async def last(interaction: discord.Interaction, nick: str):
+        await interaction.response.defer()
         embed = await get_last_match_stats(nick)
-        await interaction.response.send_message(embed=embed)
+        await interaction.followup.send(embed=embed)
 
     @tree.command(
         name="lastimage",
