@@ -104,6 +104,7 @@ def get_faceit_match_details(match_id):
                 },
                 "utility_dmg": int(player["player_stats"].get("Utility Damage", 0)),
                 "kr_ratio": player["player_stats"].get("K/R Ratio", "0"),
+                "mvps": int(player["player_stats"].get("MVPs", 0)),
             })
     # Determine final score (e.g., 13:11)
     score = None
@@ -457,6 +458,7 @@ async def get_last_match_stats(nickname):
         flash = pds.get("flash", {"count":0, "successes":0})
         udmg = pds.get("utility_dmg", 0)
         kr = pds.get("kr_ratio", "0")
+        mvps = pds.get("mvps", 0)
         
         adv_stats = (
             f"**Kills:** 2x: `{mk['2k']}` | 3x: `{mk['3k']}` | 4x: `{mk['4k']}` | 5x: `{mk['5k']}`\n"
@@ -464,7 +466,8 @@ async def get_last_match_stats(nickname):
             f"**Clutche:** `{clutch['wins']}/{clutch['count']}`\n"
             f"**Flashe:** `{flash['successes']}/{flash['count']}`\n"
             f"**Utility Dmg:** `{udmg}`\n"
-            f"**K/R Ratio:** `{kr}`"
+            f"**K/R Ratio:** `{kr}`\n"
+            f"**MVP:** `{mvps}`"
         )
         embed.add_field(
             name=f"Statystyki gracza {player_nickname}",
