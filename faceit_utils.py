@@ -460,8 +460,16 @@ async def get_last_match_stats(nickname):
         kr = pds.get("kr_ratio", "0")
         mvps = pds.get("mvps", 0)
         
+        mk_parts = []
+        if mk.get("2k", 0) > 0: mk_parts.append(f"2x: `{mk['2k']}`")
+        if mk.get("3k", 0) > 0: mk_parts.append(f"3x: `{mk['3k']}`")
+        if mk.get("4k", 0) > 0: mk_parts.append(f"4x: `{mk['4k']}`")
+        if mk.get("5k", 0) > 0: mk_parts.append(f"5x: `{mk['5k']}`")
+        
+        mk_str = f"**Kills:** {' | '.join(mk_parts)}\n" if mk_parts else ""
+        
         adv_stats = (
-            f"**Kills:** 2x: `{mk['2k']}` | 3x: `{mk['3k']}` | 4x: `{mk['4k']}` | 5x: `{mk['5k']}`\n"
+            f"{mk_str}"
             f"**Entry:** `{entry['wins']}/{entry['count']}`\n"
             f"**Clutche:** `{clutch['wins']}/{clutch['count']}`\n"
             f"**Flashe:** `{flash['successes']}/{flash['count']}`\n"
