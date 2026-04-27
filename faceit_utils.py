@@ -729,6 +729,89 @@ def generate_last_match_image(nickname):
     return discord.File(fp=buffer, filename="last_match.png")
 
 
+async def generate_df_image():
+    """Generuje ranking w formie obrazka /df z podanych ramek."""
+    base_dir = os.path.dirname(__file__)
+    bg_path = os.path.join(base_dir, "images", "ranking", "faceitranking.png")
+    
+    if not os.path.exists(bg_path):
+        return None
+        
+    img = Image.open(bg_path).copy()
+    draw = ImageDraw.Draw(img)
+    
+    font_path = os.path.join(base_dir, "images", "font", "roboto", "Roboto-Medium.ttf")
+    try:
+        font_name = ImageFont.truetype(font_path, 32)
+        font_stat = ImageFont.truetype(font_path, 22)
+    except:
+        font_name = ImageFont.load_default()
+        font_stat = ImageFont.load_default()
+
+    # Get data
+    player_stats = []
+    for nickname in player_nicknames:
+        player_data = get_faceit_player_data(nickname)
+        if player_data:
+            player_level = player_data.get('games', {}).get('cs2', {}).get('skill_level', 0)
+            player_elo = player_data.get('games', {}).get('cs2', {}).get('faceit_elo', 0)
+            player_stats.append({
+                'nickname': nickname,
+                'level': player_level if isinstance(player_level, int) else 0,
+                'elo': player_elo if isinstance(player_elo, int) else 0,
+            })
+    player_stats.sort(key=lambda x: (x['elo'], x['level']), reverse=True)
+
+    gaps = [89, 89, 85, 71, 66, 67, 67, 63, 63]
+    h = 269 - 214 # 55
+
+    for i, player in enumerate(player_stats):
+        if i >= 10: break
+        
+        offset = sum(gaps[:i]) + i * h
+        
+        # Name
+        b_top = 214 + offset
+        b_bot = 269 + offset
+        
+        # ELO
+        e_top = 206 + offset
+        e_bot = 239 + offset
+        
+        # LVL
+        l_top = 252 + offset
+        l_bot = 285 + offset
+        
+        # Draw Name
+        name_text = player['nickname']
+        bbox = draw.textbbox((0, 0), name_text, font=font_name)
+        th = bbox[3] - bbox[1]
+        y_name = b_top + (b_bot - b_top - th) // 2
+        draw.text((286 + 10, y_name), name_text, fill="white", font=font_name)
+        
+        # Draw ELO
+        elo_text = str(player['elo'])
+        bbox = draw.textbbox((0, 0), elo_text, font=font_stat)
+        tw = bbox[2] - bbox[0]
+        th = bbox[3] - bbox[1]
+        x_elo = 737 + (816 - 737 - tw) // 2
+        y_elo = e_top + (e_bot - e_top - th) // 2
+        draw.text((x_elo, y_elo), elo_text, fill="white", font=font_stat)
+        
+        # Draw LVL
+        lvl_text = str(player['level'])
+        bbox = draw.textbbox((0, 0), lvl_text, font=font_stat)
+        tw = bbox[2] - bbox[0]
+        th = bbox[3] - bbox[1]
+        x_lvl = 737 + (816 - 737 - tw) // 2
+        y_lvl = l_top + (l_bot - l_top - th) // 2
+        draw.text((x_lvl, y_lvl), lvl_text, fill="white", font=font_stat)
+
+    buffer = io.BytesIO()
+    img.save(buffer, format="PNG")
+    buffer.seek(0)
+    return discord.File(fp=buffer, filename="df_ranking.png")
+
 def reset_faceit_ranking():
     if os.path.exists(FACEIT_RANKING_FILE):
         os.remove(FACEIT_RANKING_FILE)
@@ -1219,6 +1302,19 @@ async def setup_faceit_commands(client: discord.Client, tree: app_commands.Comma
         await interaction.response.defer()
         embed = await get_discordfaceit_stats()
         await interaction.followup.send(embed=embed)
+
+    @tree.command(
+        name="df",
+        description="Wyświetla ranking Faceit graczy z discorda w formie graficznej",
+        guild=guild
+    )
+    async def df(interaction: discord.Interaction):
+        await interaction.response.defer()
+        image_file = await generate_df_image()
+        if image_file:
+            await interaction.followup.send(file=image_file)
+        else:
+            await interaction.followup.send("❌ Nie można wygenerować obrazka (brak pliku tła).")
 
     @tree.command(
         name="resetfaceitranking",

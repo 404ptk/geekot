@@ -275,3 +275,4 @@ async def setup_fun_commands(client: discord.Client, tree: app_commands.CommandT
         else:
             embed.description = "Ten użytkownik nie ma avatara."
         await interaction.response.send_message(embed=embed)
+
