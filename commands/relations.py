@@ -34,6 +34,28 @@ USER_ID_TO_ALIAS = {
     326679825823563796: "kajtek",
 }
 
+USER_DATIVE_FORMS = {
+    "jaro": "jarowi",
+    "mateuko": "mateukowi",
+    "radzio": "radziowi",
+    "kuzia": "kuzi",
+    "hubi": "hubiemu",
+    "plaster": "plastrowi",
+    "masny": "masnemu",
+    "kajtek": "kajtkowi",
+}
+
+USER_INSTRUMENTAL_FORMS = {
+    "jaro": "jarem",
+    "mateuko": "mateukiem",
+    "radzio": "radziem",
+    "kuzia": "kuzią",
+    "hubi": "hubim",
+    "plaster": "plastrem",
+    "masny": "masnym",
+    "kajtek": "kajtkiem",
+}
+
 RELATION_ALIASES = {
     "zgoda": "zgoda",
     "zgody": "zgoda",
@@ -50,6 +72,32 @@ RELATION_LABELS = {
     "neutralne": "NEUTRALNE STOSUNKI",
     "uklad": "UKLADY",
     "kosa": "KOSY",
+}
+
+RELATION_EMOJIS = {
+    "zgoda": "🤝",
+    "neutralne": "😐",
+    "uklad": "🫱‍🫲",
+    "kosa": "⚔️",
+}
+
+RELATION_ACTIONS = {
+    "zgoda": {
+        "new": "zaczął trzymać zgodę z",
+        "update": "od teraz trzyma zgodę z",
+    },
+    "neutralne": {
+        "new": "zaczął mieć neutralne stosunki z",
+        "update": "od teraz ma neutralne stosunki z",
+    },
+    "uklad": {
+        "new": "zaczął mieć układy z",
+        "update": "od teraz ma układy z",
+    },
+    "kosa": {
+        "new": "wypowiedział kosę",
+        "update": "od teraz ma kosę z",
+    },
 }
 
 DISPLAY_RELATION_CHOICES = [
@@ -77,6 +125,56 @@ def relation_label(value: Optional[str]) -> str:
     if not value:
         return "BRAK RELACJI"
     return RELATION_LABELS.get(value, value.upper())
+
+
+def inflect_second_nick(alias: str) -> str:
+    return USER_DATIVE_FORMS.get(alias, alias)
+
+
+def inflect_second_nick_with_z(alias: str) -> str:
+    return USER_INSTRUMENTAL_FORMS.get(alias, alias)
+
+
+def build_relation_embed(user_a: str, user_b: str, relation_key: str, existing_relation: Optional[str] = None) -> discord.Embed:
+    action_type = "update" if existing_relation else "new"
+    action_text = RELATION_ACTIONS[relation_key][action_type]
+    emoji = RELATION_EMOJIS.get(relation_key, "✨")
+    title = f"{emoji} Relacja zaktualizowana" if existing_relation else f"{emoji} Nowa relacja"
+    if relation_key == "kosa":
+        user_b_form = inflect_second_nick(user_b)
+    else:
+        user_b_form = inflect_second_nick_with_z(user_b)
+
+    description = f"**{user_a}** {action_text} **{user_b_form}**."
+
+    embed = discord.Embed(
+        title=title,
+        description=description,
+        color=discord.Color.red() if relation_key == "kosa" else discord.Color.green(),
+    )
+    embed.add_field(name="Status", value=f"{emoji} **{relation_label(relation_key)}**", inline=True)
+    if existing_relation:
+        embed.add_field(
+            name="Poprzednio",
+            value=f"{RELATION_EMOJIS.get(existing_relation, '✨')} **{relation_label(existing_relation)}**",
+            inline=True,
+        )
+    return embed
+
+
+def build_relation_unchanged_embed(user_a: str, user_b: str, relation_key: str) -> discord.Embed:
+    emoji = RELATION_EMOJIS.get(relation_key, "✨")
+    if relation_key == "kosa":
+        user_b_form = inflect_second_nick(user_b)
+    else:
+        user_b_form = inflect_second_nick_with_z(user_b)
+    embed = discord.Embed(
+        title=f"{emoji} Brak zmian",
+        description=f"**{user_a}** już ma **{relation_label(relation_key)}** z **{user_b_form}**.",
+        color=discord.Color.blurple(),
+    )
+    embed.add_field(name="Status", value=f"{emoji} **{relation_label(relation_key)}**", inline=True)
+    return embed
 
 
 def load_relations() -> Dict[str, Dict[str, str]]:
@@ -290,7 +388,7 @@ async def handle_temp_expiry(client: discord.Client, pair_key: str) -> None:
             embed = discord.Embed(
                 title="Zgoda wygasla",
                 description=(
-                    f"Zgoda pomiedzy **{user_a}** i **{user_b}** wygasla po 24h.\n"
+                    f"Zgoda pomiedzy **{user_a}** a **{inflect_second_nick_with_z(user_b)}** wygasla po 24h.\n"
                     f"Aktualna relacja: **{relation_label(current_relation)}**"
                 ),
                 color=discord.Color.orange(),
@@ -438,10 +536,11 @@ async def setup_relations_commands(client: discord.Client, tree: app_commands.Co
         schedule_temp_expiry_task(client, pair_key)
 
         embed = discord.Embed(
-            title="Zawarto zgode",
-            description=f"Zawarto zgode na 24h pomiedzy **{actor}** i **{target}**.",
+            title=f"{RELATION_EMOJIS['zgoda']} Tymczasowa zgoda",
+            description=f"**{actor}** trzyma zgodę z **{inflect_second_nick_with_z(target)}** przez 24h.",
             color=discord.Color.green(),
         )
+        embed.add_field(name="Relacja", value=f"{RELATION_EMOJIS['zgoda']} **{relation_label('zgoda')}**", inline=True)
         embed.add_field(name="Wygasa", value=f"<t:{int(expires_at.timestamp())}:R>", inline=False)
         await interaction.response.send_message(embed=embed)
 
@@ -494,12 +593,12 @@ async def setup_relations_commands(client: discord.Client, tree: app_commands.Co
         set_bidirectional_relation(data, user_a, user_b, relation_key)
         save_relations(data)
 
-        if existing_relation:
-            message = (
-                f"Zmieniono relacje: **{user_a}** <-> **{user_b}** "
-                f"z **{RELATION_LABELS.get(existing_relation, existing_relation)}** na **{RELATION_LABELS[relation_key]}**"
+        if existing_relation == relation_key:
+            await interaction.response.send_message(
+                embed=build_relation_unchanged_embed(user_a, user_b, relation_key)
             )
-        else:
-            message = f"Dodano relacje: **{user_a}** <-> **{user_b}** = **{RELATION_LABELS[relation_key]}**"
+            return
 
-        await interaction.response.send_message(message)
+        await interaction.response.send_message(
+            embed=build_relation_embed(user_a, user_b, relation_key, existing_relation)
+        )
