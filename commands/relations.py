@@ -74,11 +74,25 @@ RELATION_LABELS = {
     "kosa": "KOSY",
 }
 
+RELATION_LABELS_SINGULAR = {
+    "zgoda": "ZGODA",
+    "neutralne": "NEUTRALNE STOSUNKI",
+    "uklad": "UKŁAD",
+    "kosa": "KOSA",
+}
+
 RELATION_EMOJIS = {
     "zgoda": "🤝",
     "neutralne": "😐",
     "uklad": "🫱‍🫲",
     "kosa": "⚔️",
+}
+
+RELATION_COLORS = {
+    "zgoda": discord.Color.green(),
+    "neutralne": discord.Color.gold(),
+    "uklad": discord.Color.purple(),
+    "kosa": discord.Color.red(),
 }
 
 RELATION_ACTIONS = {
@@ -127,6 +141,12 @@ def relation_label(value: Optional[str]) -> str:
     return RELATION_LABELS.get(value, value.upper())
 
 
+def relation_label_singular(value: Optional[str]) -> str:
+    if not value:
+        return "BRAK RELACJI"
+    return RELATION_LABELS_SINGULAR.get(value, value.upper())
+
+
 def inflect_second_nick(alias: str) -> str:
     return USER_DATIVE_FORMS.get(alias, alias)
 
@@ -139,24 +159,22 @@ def build_relation_embed(user_a: str, user_b: str, relation_key: str, existing_r
     action_type = "update" if existing_relation else "new"
     action_text = RELATION_ACTIONS[relation_key][action_type]
     emoji = RELATION_EMOJIS.get(relation_key, "✨")
-    title = f"{emoji} Relacja zaktualizowana" if existing_relation else f"{emoji} Nowa relacja"
     if relation_key == "kosa":
         user_b_form = inflect_second_nick(user_b)
     else:
         user_b_form = inflect_second_nick_with_z(user_b)
 
-    description = f"**{user_a}** {action_text} **{user_b_form}**."
+    sentence = f"**{user_a}** {action_text} **{user_b_form}**."
 
     embed = discord.Embed(
-        title=title,
-        description=description,
-        color=discord.Color.red() if relation_key == "kosa" else discord.Color.green(),
+        title=sentence,
+        color=RELATION_COLORS.get(relation_key, discord.Color.green()),
     )
-    embed.add_field(name="Status", value=f"{emoji} **{relation_label(relation_key)}**", inline=True)
+    embed.add_field(name="Status", value=f"{emoji} **{relation_label_singular(relation_key)}**", inline=True)
     if existing_relation:
         embed.add_field(
             name="Poprzednio",
-            value=f"{RELATION_EMOJIS.get(existing_relation, '✨')} **{relation_label(existing_relation)}**",
+            value=f"{RELATION_EMOJIS.get(existing_relation, '✨')} **{relation_label_singular(existing_relation)}**",
             inline=True,
         )
     return embed
@@ -521,6 +539,8 @@ async def setup_relations_commands(client: discord.Client, tree: app_commands.Co
         existing_temp = temp_data.get(pair_key)
         previous_relation = existing_temp.get("previous_relation") if existing_temp else current_relation
 
+        is_already_zgoda = current_relation == "zgoda"
+
         set_bidirectional_relation(relations_data, actor, target, "zgoda")
         save_relations(relations_data)
 
@@ -542,7 +562,7 @@ async def setup_relations_commands(client: discord.Client, tree: app_commands.Co
         )
         embed.add_field(name="Relacja", value=f"{RELATION_EMOJIS['zgoda']} **{relation_label('zgoda')}**", inline=True)
         embed.add_field(name="Wygasa", value=f"<t:{int(expires_at.timestamp())}:R>", inline=False)
-        await interaction.response.send_message(embed=embed)
+        await interaction.response.send_message(embed=embed, ephemeral=is_already_zgoda)
 
     @tree.command(
         name="dodajrelacje",
@@ -595,7 +615,8 @@ async def setup_relations_commands(client: discord.Client, tree: app_commands.Co
 
         if existing_relation == relation_key:
             await interaction.response.send_message(
-                embed=build_relation_unchanged_embed(user_a, user_b, relation_key)
+                embed=build_relation_unchanged_embed(user_a, user_b, relation_key),
+                ephemeral=True,
             )
             return
 
