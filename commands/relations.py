@@ -491,83 +491,15 @@ async def setup_relations_commands(client: discord.Client, tree: app_commands.Co
         data = load_relations()
         existing_relation = data.get(user_a, {}).get(user_b)
 
+        set_bidirectional_relation(data, user_a, user_b, relation_key)
+        save_relations(data)
+
         if existing_relation:
-            await interaction.response.send_message(
-                f"Relacja miedzy **{user_a}** i **{user_b}** juz istnieje ({RELATION_LABELS.get(existing_relation, existing_relation)}). Uzyj /zmienrelacje.",
-                ephemeral=True,
+            message = (
+                f"Zmieniono relacje: **{user_a}** <-> **{user_b}** "
+                f"z **{RELATION_LABELS.get(existing_relation, existing_relation)}** na **{RELATION_LABELS[relation_key]}**"
             )
-            return
+        else:
+            message = f"Dodano relacje: **{user_a}** <-> **{user_b}** = **{RELATION_LABELS[relation_key]}**"
 
-        set_bidirectional_relation(data, user_a, user_b, relation_key)
-        save_relations(data)
-
-        await interaction.response.send_message(
-            f"Dodano relacje: **{user_a}** <-> **{user_b}** = **{RELATION_LABELS[relation_key]}**"
-        )
-
-    @tree.command(
-        name="zmienrelacje",
-        description="Zmienia twoja relacje z drugim uzytkownikiem",
-        guild=guild,
-    )
-    @app_commands.describe(
-        relacja="Nowy typ relacji: zgoda / neutralne stosunki / uklad / kosa",
-        nick2="Drugi użytkownik",
-    )
-    @app_commands.autocomplete(relacja=relation_autocomplete, nick2=nick_autocomplete)
-    async def zmienrelacje(interaction: discord.Interaction, relacja: str, nick2: str):
-        user_a = resolve_actor_nick(interaction)
-        if user_a is None:
-            await interaction.response.send_message(
-                "Nie moge przypisac Twojego nicku do listy relacji. Ustaw nick zgodny z: " + ", ".join(ALLOWED_USERS),
-                ephemeral=True,
-            )
-            return
-
-        user_b = resolve_alias_from_input(interaction, nick2)
-        relation_key = normalize_relation(relacja)
-
-        if user_b is None:
-            await interaction.response.send_message(
-                "Niepoprawny nick. Dozwoleni użytkownicy: " + ", ".join(ALLOWED_USERS),
-                ephemeral=True,
-            )
-            return
-
-        if user_a == user_b:
-            await interaction.response.send_message(
-                "Nie mozna zmienic relacji uzytkownika z samym soba.",
-                ephemeral=True,
-            )
-            return
-
-        if not relation_key:
-            await interaction.response.send_message(
-                "Niepoprawny typ relacji. Uzyj: zgoda, neutralne stosunki, uklad lub kosa.",
-                ephemeral=True,
-            )
-            return
-
-        data = load_relations()
-        existing_relation = data.get(user_a, {}).get(user_b)
-
-        if not existing_relation:
-            await interaction.response.send_message(
-                f"Brak relacji miedzy **{user_a}** i **{user_b}**. Uzyj /dodajrelacje.",
-                ephemeral=True,
-            )
-            return
-
-        if existing_relation == relation_key:
-            await interaction.response.send_message(
-                f"Relacja miedzy **{user_a}** i **{user_b}** juz ma typ **{RELATION_LABELS[relation_key]}**.",
-                ephemeral=True,
-            )
-            return
-
-        set_bidirectional_relation(data, user_a, user_b, relation_key)
-        save_relations(data)
-
-        await interaction.response.send_message(
-            f"Zmieniono relacje: **{user_a}** <-> **{user_b}** = **{RELATION_LABELS[relation_key]}**"
-        )
+        await interaction.response.send_message(message)
