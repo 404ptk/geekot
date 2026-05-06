@@ -33,6 +33,7 @@ import masny_utils
 from commands import football
 import leetify_utils
 from commands import steam as steam_module
+from commands import relations as relations_module
 
 
 games_data = games_module.load_games()  # commands/games.py
@@ -291,6 +292,7 @@ async def on_ready():
     await football.setup_football_commands(client, client.tree, guild_id=GUILD_ID)
     await leetify_utils.setup_leetify_commands(client, client.tree, guild_id=GUILD_ID)
     await steam_module.setup_steam_commands(client, client.tree, guild_id=GUILD_ID)
+    await relations_module.setup_relations_commands(client, client.tree, guild_id=GUILD_ID)
     # await youtube_watch.setup_youtube_watch(client, client.tree, guild_id=GUILD_ID)  # start watcher
 
     print(f'\n{client.user} has connected to Discord!\n\n'
