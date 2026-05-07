@@ -182,6 +182,25 @@ def apply_relation_image(embed: discord.Embed, relation_key: str) -> None:
         embed.set_image(url=f"attachment://{image_name}")
 
 
+def build_user_image_file(user_alias: str) -> Optional[discord.File]:
+    for ext in ("png", "jpg", "jpeg", "webp"):
+        image_name = f"{user_alias}.{ext}"
+        image_path = RELATIONS_IMAGE_DIR / image_name
+        if image_path.exists():
+            return discord.File(fp=str(image_path), filename=image_name)
+    return None
+
+
+def apply_user_thumbnail(embed: discord.Embed, user_alias: str) -> Optional[str]:
+    for ext in ("png", "jpg", "jpeg", "webp"):
+        image_name = f"{user_alias}.{ext}"
+        image_path = RELATIONS_IMAGE_DIR / image_name
+        if image_path.exists():
+            embed.set_thumbnail(url=f"attachment://{image_name}")
+            return image_name
+    return None
+
+
 def build_relation_embed(user_a: str, user_b: str, relation_key: str, existing_relation: Optional[str] = None) -> discord.Embed:
     action_type = "update" if existing_relation else "new"
     action_text = RELATION_ACTIONS[relation_key][action_type]
@@ -524,7 +543,12 @@ async def setup_relations_commands(client: discord.Client, tree: app_commands.Co
             value = ", ".join(users) if users else "-"
             embed.add_field(name=RELATION_LABELS[key], value=value, inline=False)
 
-        await interaction.response.send_message(embed=embed)
+        user_file = build_user_image_file(user)
+        if user_file:
+            embed.set_thumbnail(url=f"attachment://{user_file.filename}")
+            await interaction.response.send_message(embed=embed, file=user_file)
+        else:
+            await interaction.response.send_message(embed=embed)
 
     @tree.command(
         name="zgoda",
