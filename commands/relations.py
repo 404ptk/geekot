@@ -2,6 +2,7 @@ import json
 import os
 import asyncio
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from typing import Dict, List, Optional
 
 import discord
@@ -10,6 +11,7 @@ from discord import app_commands
 GUILD_ID = 551503797067710504
 RELATIONS_FILE = "txt/relations.json"
 TEMP_RELATIONS_FILE = "txt/temp_relations.json"
+RELATIONS_IMAGE_DIR = Path(__file__).resolve().parents[1] / "images" / "relations"
 
 ALLOWED_USERS = [
     "jaro",
@@ -84,7 +86,7 @@ RELATION_LABELS_SINGULAR = {
 RELATION_EMOJIS = {
     "zgoda": "🤝",
     "neutralne": "😐",
-    "uklad": "🫱‍🫲",
+    "uklad": "📈",
     "kosa": "⚔️",
 }
 
@@ -112,6 +114,13 @@ RELATION_ACTIONS = {
         "new": "wypowiedział kosę",
         "update": "od teraz ma kosę z",
     },
+}
+
+RELATION_IMAGES = {
+    "zgoda": "zgoda.png",
+    "neutralne": "neutralne.png",
+    "uklad": "uklad.png",
+    "kosa": "kosa.png",
 }
 
 DISPLAY_RELATION_CHOICES = [
@@ -155,11 +164,29 @@ def inflect_second_nick_with_z(alias: str) -> str:
     return USER_INSTRUMENTAL_FORMS.get(alias, alias)
 
 
+def build_relation_image_file(relation_key: str) -> Optional[discord.File]:
+    image_name = RELATION_IMAGES.get(relation_key)
+    if not image_name:
+        return None
+
+    image_path = RELATIONS_IMAGE_DIR / image_name
+    if not image_path.exists():
+        return None
+
+    return discord.File(fp=str(image_path), filename=image_name)
+
+
+def apply_relation_image(embed: discord.Embed, relation_key: str) -> None:
+    image_name = RELATION_IMAGES.get(relation_key)
+    if image_name:
+        embed.set_image(url=f"attachment://{image_name}")
+
+
 def build_relation_embed(user_a: str, user_b: str, relation_key: str, existing_relation: Optional[str] = None) -> discord.Embed:
     action_type = "update" if existing_relation else "new"
     action_text = RELATION_ACTIONS[relation_key][action_type]
     emoji = RELATION_EMOJIS.get(relation_key, "✨")
-    if relation_key == "kosa":
+    if relation_key == "kosa" and not existing_relation:
         user_b_form = inflect_second_nick(user_b)
     else:
         user_b_form = inflect_second_nick_with_z(user_b)
@@ -170,6 +197,7 @@ def build_relation_embed(user_a: str, user_b: str, relation_key: str, existing_r
         title=sentence,
         color=RELATION_COLORS.get(relation_key, discord.Color.green()),
     )
+    apply_relation_image(embed, relation_key)
     embed.add_field(name="Status", value=f"{emoji} **{relation_label_singular(relation_key)}**", inline=True)
     if existing_relation:
         embed.add_field(
@@ -182,15 +210,13 @@ def build_relation_embed(user_a: str, user_b: str, relation_key: str, existing_r
 
 def build_relation_unchanged_embed(user_a: str, user_b: str, relation_key: str) -> discord.Embed:
     emoji = RELATION_EMOJIS.get(relation_key, "✨")
-    if relation_key == "kosa":
-        user_b_form = inflect_second_nick(user_b)
-    else:
-        user_b_form = inflect_second_nick_with_z(user_b)
+    user_b_form = inflect_second_nick_with_z(user_b)
     embed = discord.Embed(
         title=f"{emoji} Brak zmian",
         description=f"**{user_a}** już ma **{relation_label(relation_key)}** z **{user_b_form}**.",
         color=discord.Color.blurple(),
     )
+    apply_relation_image(embed, relation_key)
     embed.add_field(name="Status", value=f"{emoji} **{relation_label(relation_key)}**", inline=True)
     return embed
 
@@ -560,9 +586,14 @@ async def setup_relations_commands(client: discord.Client, tree: app_commands.Co
             description=f"**{actor}** trzyma zgodę z **{inflect_second_nick_with_z(target)}** przez 24h.",
             color=discord.Color.green(),
         )
+        apply_relation_image(embed, "zgoda")
         embed.add_field(name="Relacja", value=f"{RELATION_EMOJIS['zgoda']} **{relation_label('zgoda')}**", inline=True)
         embed.add_field(name="Wygasa", value=f"<t:{int(expires_at.timestamp())}:R>", inline=False)
-        await interaction.response.send_message(embed=embed, ephemeral=is_already_zgoda)
+        await interaction.response.send_message(
+            embed=embed,
+            file=build_relation_image_file("zgoda"),
+            ephemeral=is_already_zgoda,
+        )
 
     @tree.command(
         name="dodajrelacje",
@@ -614,12 +645,16 @@ async def setup_relations_commands(client: discord.Client, tree: app_commands.Co
         save_relations(data)
 
         if existing_relation == relation_key:
+            relation_file = build_relation_image_file(relation_key)
             await interaction.response.send_message(
                 embed=build_relation_unchanged_embed(user_a, user_b, relation_key),
+                file=relation_file,
                 ephemeral=True,
             )
             return
 
+        relation_file = build_relation_image_file(relation_key)
         await interaction.response.send_message(
-            embed=build_relation_embed(user_a, user_b, relation_key, existing_relation)
+            embed=build_relation_embed(user_a, user_b, relation_key, existing_relation),
+            file=relation_file,
         )
