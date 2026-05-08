@@ -1,0 +1,16 @@
+{
+    "jaro": {
+        "mateuko": "uklad",
+        "masny": "neutralne",
+        "kajtek": "neutralne"
+    },
+    "mateuko": {
+        "jaro": "uklad"
+    },
+    "masny": {
+        "jaro": "neutralne"
+    },
+    "kajtek": {
+        "jaro": "neutralne"
+    }
+}

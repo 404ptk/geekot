@@ -534,7 +534,7 @@ async def setup_relations_commands(client: discord.Client, tree: app_commands.Co
                 grouped[relation_type].append(other_user)
 
         embed = discord.Embed(
-            title=f"Relacje: {user}",
+            title=f"",
             color=discord.Color.blue(),
         )
 

@@ -34,3 +34,4 @@ txt/user_stats_history.json
 txt/wymowki.txt
 txt\faceit_daily_stats.json
 explore_faceit.py
+images\relations\*.png

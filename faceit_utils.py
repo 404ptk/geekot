@@ -1177,6 +1177,14 @@ async def setup_faceit_commands(client: discord.Client, tree: app_commands.Comma
         player_level = player_data.get('games', {}).get('cs2', {}).get('skill_level', "Brak danych")
         player_elo = player_data.get('games', {}).get('cs2', {}).get('faceit_elo', 'Brak danych')
         avatar_url = player_data.get('avatar', 'https://www.faceit.com/static/img/avatar.png')
+        player_level_emoji = str(player_level)
+        if str(player_level).isdigit() and interaction.guild:
+            emoji_name = f"faceit{player_level}"
+            emoji_obj = discord.utils.get(interaction.guild.emojis, name=emoji_name)
+            if emoji_obj:
+                player_level_emoji = str(emoji_obj)
+            else:
+                player_level_emoji = f":{emoji_name}:"
         
         # Calculate daily ELO change
         daily_elo_change = ""
@@ -1191,7 +1199,7 @@ async def setup_faceit_commands(client: discord.Client, tree: app_commands.Comma
         
         embed = discord.Embed(
             title=f'{player_nickname}',
-            description=f'**LVL:** {player_level} | **ELO:** {player_elo}{daily_elo_change}',
+            description=f'{player_level_emoji} | **ELO:** {player_elo}{daily_elo_change}',
             color=discord.Color.orange()
         )
         embed.set_thumbnail(url=avatar_url)
