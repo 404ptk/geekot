@@ -3,7 +3,7 @@
         {
             "name": "Fever Case",
             "hash_name": "Fever Case",
-            "sell_listings": 464395,
+            "sell_listings": 465943,
             "sell_price": 94,
             "sell_price_text": "$0.94",
             "app_icon": "https://cdn.fastly.steamstatic.com/steamcommunity/public/images/apps/730/8dbc71957312bbd3baea65848b545be9eae2a355.jpg",
@@ -28,9 +28,9 @@
         {
             "name": "Kilowatt Case",
             "hash_name": "Kilowatt Case",
-            "sell_listings": 435038,
-            "sell_price": 35,
-            "sell_price_text": "$0.35",
+            "sell_listings": 435470,
+            "sell_price": 36,
+            "sell_price_text": "$0.36",
             "app_icon": "https://cdn.fastly.steamstatic.com/steamcommunity/public/images/apps/730/8dbc71957312bbd3baea65848b545be9eae2a355.jpg",
             "app_name": "Counter-Strike 2",
             "asset_description": {
@@ -48,14 +48,14 @@
                 "market_bucket_group_name": "Kilowatt Case",
                 "market_bucket_group_id": "G18A8263004"
             },
-            "sale_price_text": "$0.34"
+            "sale_price_text": "$0.35"
         },
         {
             "name": "Revolution Case",
             "hash_name": "Revolution Case",
-            "sell_listings": 257823,
-            "sell_price": 48,
-            "sell_price_text": "$0.48",
+            "sell_listings": 257647,
+            "sell_price": 47,
+            "sell_price_text": "$0.47",
             "app_icon": "https://cdn.fastly.steamstatic.com/steamcommunity/public/images/apps/730/8dbc71957312bbd3baea65848b545be9eae2a355.jpg",
             "app_name": "Counter-Strike 2",
             "asset_description": {
@@ -73,14 +73,14 @@
                 "market_bucket_group_name": "Revolution Case",
                 "market_bucket_group_id": "G1890263004"
             },
-            "sale_price_text": "$0.46"
+            "sale_price_text": "$0.45"
         },
         {
             "name": "Dreams & Nightmares Case",
             "hash_name": "Dreams & Nightmares Case",
-            "sell_listings": 256617,
-            "sell_price": 214,
-            "sell_price_text": "$2.14",
+            "sell_listings": 256631,
+            "sell_price": 215,
+            "sell_price_text": "$2.15",
             "app_icon": "https://cdn.fastly.steamstatic.com/steamcommunity/public/images/apps/730/8dbc71957312bbd3baea65848b545be9eae2a355.jpg",
             "app_name": "Counter-Strike 2",
             "asset_description": {
@@ -98,14 +98,14 @@
                 "market_bucket_group_name": "Dreams & Nightmares Case",
                 "market_bucket_group_id": "G18D2253004"
             },
-            "sale_price_text": "$2.05"
+            "sale_price_text": "$2.06"
         },
         {
             "name": "Recoil Case",
             "hash_name": "Recoil Case",
-            "sell_listings": 173492,
-            "sell_price": 62,
-            "sell_price_text": "$0.62",
+            "sell_listings": 176005,
+            "sell_price": 63,
+            "sell_price_text": "$0.63",
             "app_icon": "https://cdn.fastly.steamstatic.com/steamcommunity/public/images/apps/730/8dbc71957312bbd3baea65848b545be9eae2a355.jpg",
             "app_name": "Counter-Strike 2",
             "asset_description": {
@@ -123,14 +123,14 @@
                 "market_bucket_group_name": "Recoil Case",
                 "market_bucket_group_id": "G18EE253004"
             },
-            "sale_price_text": "$0.60"
+            "sale_price_text": "$0.61"
         },
         {
             "name": "Fracture Case",
             "hash_name": "Fracture Case",
-            "sell_listings": 93402,
-            "sell_price": 100,
-            "sell_price_text": "$1.00",
+            "sell_listings": 93728,
+            "sell_price": 101,
+            "sell_price_text": "$1.01",
             "app_icon": "https://cdn.fastly.steamstatic.com/steamcommunity/public/images/apps/730/8dbc71957312bbd3baea65848b545be9eae2a355.jpg",
             "app_name": "Counter-Strike 2",
             "asset_description": {
@@ -148,12 +148,12 @@
                 "market_bucket_group_name": "Fracture Case",
                 "market_bucket_group_id": "G18DA243004"
             },
-            "sale_price_text": "$0.96"
+            "sale_price_text": "$0.97"
         },
         {
             "name": "Snakebite Case",
             "hash_name": "Snakebite Case",
-            "sell_listings": 46852,
+            "sell_listings": 47275,
             "sell_price": 100,
             "sell_price_text": "$1.00",
             "app_icon": "https://cdn.fastly.steamstatic.com/steamcommunity/public/images/apps/730/8dbc71957312bbd3baea65848b545be9eae2a355.jpg",
@@ -178,7 +178,7 @@
         {
             "name": "Gallery Case",
             "hash_name": "Gallery Case",
-            "sell_listings": 36399,
+            "sell_listings": 36684,
             "sell_price": 164,
             "sell_price_text": "$1.64",
             "app_icon": "https://cdn.fastly.steamstatic.com/steamcommunity/public/images/apps/730/8dbc71957312bbd3baea65848b545be9eae2a355.jpg",
@@ -203,9 +203,9 @@
         {
             "name": "Glove Case",
             "hash_name": "Glove Case",
-            "sell_listings": 28764,
-            "sell_price": 1707,
-            "sell_price_text": "$17.07",
+            "sell_listings": 28716,
+            "sell_price": 1725,
+            "sell_price_text": "$17.25",
             "app_icon": "https://cdn.fastly.steamstatic.com/steamcommunity/public/images/apps/730/8dbc71957312bbd3baea65848b545be9eae2a355.jpg",
             "app_name": "Counter-Strike 2",
             "asset_description": {
@@ -223,14 +223,14 @@
                 "market_bucket_group_name": "Glove Case",
                 "market_bucket_group_id": "G18C0213004"
             },
-            "sale_price_text": "$16.33"
+            "sale_price_text": "$16.50"
         },
         {
             "name": "Clutch Case",
             "hash_name": "Clutch Case",
-            "sell_listings": 26998,
-            "sell_price": 119,
-            "sell_price_text": "$1.19",
+            "sell_listings": 27210,
+            "sell_price": 121,
+            "sell_price_text": "$1.21",
             "app_icon": "https://cdn.fastly.steamstatic.com/steamcommunity/public/images/apps/730/8dbc71957312bbd3baea65848b545be9eae2a355.jpg",
             "app_name": "Counter-Strike 2",
             "asset_description": {
@@ -248,12 +248,12 @@
                 "market_bucket_group_name": "Clutch Case",
                 "market_bucket_group_id": "G18F7223004"
             },
-            "sale_price_text": "$1.14"
+            "sale_price_text": "$1.16"
         },
         {
             "name": "Gamma 2 Case",
             "hash_name": "Gamma 2 Case",
-            "sell_listings": 21753,
+            "sell_listings": 21743,
             "sell_price": 498,
             "sell_price_text": "$4.98",
             "app_icon": "https://cdn.fastly.steamstatic.com/steamcommunity/public/images/apps/730/8dbc71957312bbd3baea65848b545be9eae2a355.jpg",
@@ -278,9 +278,9 @@
         {
             "name": "Prisma 2 Case",
             "hash_name": "Prisma 2 Case",
-            "sell_listings": 18793,
-            "sell_price": 262,
-            "sell_price_text": "$2.62",
+            "sell_listings": 18913,
+            "sell_price": 265,
+            "sell_price_text": "$2.65",
             "app_icon": "https://cdn.fastly.steamstatic.com/steamcommunity/public/images/apps/730/8dbc71957312bbd3baea65848b545be9eae2a355.jpg",
             "app_name": "Counter-Strike 2",
             "asset_description": {
@@ -298,14 +298,14 @@
                 "market_bucket_group_name": "Prisma 2 Case",
                 "market_bucket_group_id": "G18D7243004"
             },
-            "sale_price_text": "$2.51"
+            "sale_price_text": "$2.54"
         },
         {
             "name": "Gamma Case",
             "hash_name": "Gamma Case",
-            "sell_listings": 18778,
-            "sell_price": 471,
-            "sell_price_text": "$4.71",
+            "sell_listings": 18791,
+            "sell_price": 509,
+            "sell_price_text": "$5.09",
             "app_icon": "https://cdn.fastly.steamstatic.com/steamcommunity/public/images/apps/730/8dbc71957312bbd3baea65848b545be9eae2a355.jpg",
             "app_name": "Counter-Strike 2",
             "asset_description": {
@@ -323,14 +323,14 @@
                 "market_bucket_group_name": "Gamma Case",
                 "market_bucket_group_id": "G188C213004"
             },
-            "sale_price_text": "$4.51"
+            "sale_price_text": "$4.87"
         },
         {
             "name": "Danger Zone Case",
             "hash_name": "Danger Zone Case",
-            "sell_listings": 18426,
-            "sell_price": 258,
-            "sell_price_text": "$2.58",
+            "sell_listings": 18602,
+            "sell_price": 260,
+            "sell_price_text": "$2.60",
             "app_icon": "https://cdn.fastly.steamstatic.com/steamcommunity/public/images/apps/730/8dbc71957312bbd3baea65848b545be9eae2a355.jpg",
             "app_name": "Counter-Strike 2",
             "asset_description": {
@@ -348,12 +348,12 @@
                 "market_bucket_group_name": "Danger Zone Case",
                 "market_bucket_group_id": "G18C4233004"
             },
-            "sale_price_text": "$2.47"
+            "sale_price_text": "$2.49"
         },
         {
             "name": "CS20 Case",
             "hash_name": "CS20 Case",
-            "sell_listings": 14224,
+            "sell_listings": 14407,
             "sell_price": 219,
             "sell_price_text": "$2.19",
             "app_icon": "https://cdn.fastly.steamstatic.com/steamcommunity/public/images/apps/730/8dbc71957312bbd3baea65848b545be9eae2a355.jpg",
@@ -378,31 +378,31 @@
     ],
     "history": {
         "Fever Case": {
-            "current": 0.939,
+            "current": 0.94,
             "1D": 0.95,
             "7D": 0.933,
             "30D": 0.95,
             "365D": 1.222,
             "sell_price_text": "$0.94",
-            "sell_listings": 464395
+            "sell_listings": 465943
         },
         "Kilowatt Case": {
-            "current": 0.341,
+            "current": 0.353,
             "1D": 0.38,
             "7D": 0.41,
             "30D": 0.46,
             "365D": 0.66,
-            "sell_price_text": "$0.35",
-            "sell_listings": 435038
+            "sell_price_text": "$0.36",
+            "sell_listings": 435470
         },
         "Dreams & Nightmares Case": {
-            "current": 2.137,
+            "current": 2.12,
             "1D": 2.26,
             "7D": 2.3,
             "30D": 2.322,
             "365D": 2.292,
-            "sell_price_text": "$2.14",
-            "sell_listings": 256617
+            "sell_price_text": "$2.15",
+            "sell_listings": 256631
         },
         "Revolution Case": {
             "current": 0.471,
@@ -410,80 +410,80 @@
             "7D": 0.5,
             "30D": 0.54,
             "365D": 0.657,
-            "sell_price_text": "$0.48",
-            "sell_listings": 257823
+            "sell_price_text": "$0.47",
+            "sell_listings": 257647
         },
         "Recoil Case": {
-            "current": 0.624,
+            "current": 0.63,
             "1D": 0.64,
             "7D": 0.64,
             "30D": 0.66,
             "365D": 0.308,
-            "sell_price_text": "$0.62",
-            "sell_listings": 173492
+            "sell_price_text": "$0.63",
+            "sell_listings": 176005
         },
         "Fracture Case": {
-            "current": 1.001,
+            "current": 1.012,
             "1D": 1.028,
             "7D": 1.03,
             "30D": 1.036,
             "365D": 0.362,
-            "sell_price_text": "$1.00",
-            "sell_listings": 93402
+            "sell_price_text": "$1.01",
+            "sell_listings": 93728
         },
         "Snakebite Case": {
-            "current": 1.003,
+            "current": 1.009,
             "1D": 1.027,
             "7D": 1.038,
             "30D": 1.01,
             "365D": 0.483,
             "sell_price_text": "$1.00",
-            "sell_listings": 46852
+            "sell_listings": 47275
         },
         "Gallery Case": {
-            "current": 1.58,
+            "current": 1.63,
             "1D": 1.638,
             "7D": 1.65,
             "30D": 1.66,
             "365D": 0.91,
             "sell_price_text": "$1.64",
-            "sell_listings": 36399
+            "sell_listings": 36684
         },
         "Clutch Case": {
-            "current": 1.177,
+            "current": 1.191,
             "1D": 1.266,
             "7D": 1.26,
             "30D": 1.32,
             "365D": 0.933,
-            "sell_price_text": "$1.19",
-            "sell_listings": 26998
+            "sell_price_text": "$1.21",
+            "sell_listings": 27210
         },
         "Glove Case": {
-            "current": 17.322,
+            "current": 17.03,
             "1D": 17.225,
             "7D": 18.773,
             "30D": 19.15,
             "365D": 17.029,
-            "sell_price_text": "$17.07",
-            "sell_listings": 28764
+            "sell_price_text": "$17.25",
+            "sell_listings": 28716
         },
         "Danger Zone Case": {
-            "current": 2.614,
+            "current": 2.625,
             "1D": 2.66,
             "7D": 2.65,
             "30D": 2.37,
             "365D": 1.522,
-            "sell_price_text": "$2.58",
-            "sell_listings": 18426
+            "sell_price_text": "$2.60",
+            "sell_listings": 18602
         },
         "Gamma 2 Case": {
-            "current": 5.075,
+            "current": 4.97,
             "1D": 5.1,
             "7D": 4.96,
             "30D": 5.35,
             "365D": 5.007,
             "sell_price_text": "$4.98",
-            "sell_listings": 21753
+            "sell_listings": 21743
         },
         "Spectrum 2 Case": {
             "current": 4.995,
@@ -500,8 +500,8 @@
             "7D": 5.292,
             "30D": 5.394,
             "365D": 5.282,
-            "sell_price_text": "$4.71",
-            "sell_listings": 18778
+            "sell_price_text": "$5.09",
+            "sell_listings": 18791
         },
         "Prisma Case": {
             "current": 2.644,
@@ -513,13 +513,13 @@
             "sell_listings": 16159
         },
         "Prisma 2 Case": {
-            "current": 2.67,
+            "current": 2.641,
             "1D": 2.75,
             "7D": 2.77,
             "30D": 2.53,
             "365D": 1.538,
-            "sell_price_text": "$2.62",
-            "sell_listings": 18793
+            "sell_price_text": "$2.65",
+            "sell_listings": 18913
         },
         "Operation Breakout Weapon Case": {
             "current": 12.994,
@@ -537,8 +537,8 @@
             "30D": 1.99,
             "365D": 1.385,
             "sell_price_text": "$2.19",
-            "sell_listings": 14224
+            "sell_listings": 14407
         }
     },
-    "last_updated": "2026-05-10T16:09:31.639240"
+    "last_updated": "2026-05-10T16:47:41.164620"
 }

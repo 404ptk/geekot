@@ -34,6 +34,13 @@ SIEROTY_FILE = "txt/sieroty.json"
 SIEROTY_RANKING_FILE = "txt/sieroty_ranking.json"
 CLIENT_REF = None  # Reference to the Discord client for background tasks
 
+def get_guild_emoji_text(guild, emoji_name):
+    if not guild:
+        return ""
+
+    emoji_obj = discord.utils.get(guild.emojis, name=emoji_name)
+    return str(emoji_obj) if emoji_obj else ""
+
 def get_faceit_player_data(nickname):
     url = f'https://open.faceit.com/data/v4/players?nickname={nickname}'
     headers = {'Authorization': f'Bearer {FACEIT_API_KEY}'}
@@ -266,7 +273,7 @@ async def get_discordfaceit_stats():
     save_faceit_ranking(save_list)
     return embed
 
-async def get_last_match_stats(nickname):
+async def get_last_match_stats(nickname, guild=None):
     player_data = get_faceit_player_data(nickname)
     if not player_data:
         embed = discord.Embed(
@@ -355,9 +362,12 @@ async def get_last_match_stats(nickname):
         desc += f" | {score_display}"
     if team_rating_str:
         desc += f"\n{team_rating_str}"
+
+    faceit_logo = get_guild_emoji_text(guild, "faceitlogo")
+    title_prefix = f"{faceit_logo} " if faceit_logo else ""
         
     embed = discord.Embed(
-        title=f"**Ostatni mecz gracza {player_nickname}**",
+        title=f"{title_prefix} **Ostatni mecz gracza {player_nickname}**",
         description=desc,
         color=discord.Color.orange()
     )
@@ -1180,11 +1190,11 @@ async def setup_faceit_commands(client: discord.Client, tree: app_commands.Comma
         player_level_emoji = str(player_level)
         if str(player_level).isdigit() and interaction.guild:
             emoji_name = f"faceit{player_level}"
-            emoji_obj = discord.utils.get(interaction.guild.emojis, name=emoji_name)
-            if emoji_obj:
-                player_level_emoji = str(emoji_obj)
-            else:
-                player_level_emoji = f":{emoji_name}:"
+            emoji_text = get_guild_emoji_text(interaction.guild, emoji_name)
+            player_level_emoji = emoji_text if emoji_text else f":{emoji_name}:"
+
+        faceit_logo = get_guild_emoji_text(interaction.guild, "faceitlogo")
+        title_prefix = f"{faceit_logo} " if faceit_logo else ""
         
         # Calculate daily ELO change
         daily_elo_change = ""
@@ -1198,7 +1208,7 @@ async def setup_faceit_commands(client: discord.Client, tree: app_commands.Comma
                     daily_elo_change = f" ({'+' if elo_diff > 0 else ''}{elo_diff})"
         
         embed = discord.Embed(
-            title=f'{player_nickname}',
+            title=f'{title_prefix} {player_nickname}',
             description=f'{player_level_emoji} | **ELO:** {player_elo}{daily_elo_change}',
             color=discord.Color.orange()
         )
@@ -1286,7 +1296,7 @@ async def setup_faceit_commands(client: discord.Client, tree: app_commands.Comma
     @app_commands.autocomplete(nick=faceit_nick_autocomplete)
     async def last(interaction: discord.Interaction, nick: str):
         await interaction.response.defer()
-        embed = await get_last_match_stats(nick)
+        embed = await get_last_match_stats(nick, interaction.guild)
         await interaction.followup.send(embed=embed)
 
     @tree.command(
