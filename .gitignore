@@ -34,4 +34,11 @@ txt/user_stats_history.json
 txt/wymowki.txt
 txt\faceit_daily_stats.json
 explore_faceit.py
-images\relations\*.png
+images/relations/hubi.png
+images/relations/jaro.png
+images/relations/kajtek.png
+images/relations/kuzia.png
+images/relations/masny.png
+images/relations/mateuko.png
+images/relations/plaster.png
+images/relations/radzio.png
