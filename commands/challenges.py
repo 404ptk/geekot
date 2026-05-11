@@ -3,6 +3,7 @@ from discord import app_commands
 import os
 import random
 from typing import List
+from startup_logger import record_startup_step
 
 GUILD_ID = 551503797067710504
 
@@ -14,13 +15,16 @@ def save_challenges():
         for challenge in challenges:
             file.write(challenge + "\n")
 
-def load_challenges():
+def load_challenges(startup_label=None):
     challenges.clear()
     if os.path.exists(CHALLENGES_FILE):
         with open(CHALLENGES_FILE, "r", encoding="utf-8") as file:
             for line in file:
                 challenges.append(line.strip())
-        print("challenges.txt loaded.")
+        if startup_label:
+            record_startup_step(startup_label, True, CHALLENGES_FILE)
+        else:
+            print("Loaded file: txt/challenges.txt")
     else:
         default_challenges = [
             "Zagraj rundę tylko z Deagle",
@@ -28,12 +32,15 @@ def load_challenges():
             "Użyj tylko noża w jednej rundzie",
             "Zabij 3 przeciwników z AWP w jednym meczu"
         ]
-        print("Error in loading challenges.txt - Creating new file.")
+        if startup_label:
+            record_startup_step(startup_label, False, f"{CHALLENGES_FILE} not found; creating a new file")
+        else:
+            print("Error loading txt/challenges.txt - creating a new file.")
         challenges.extend(default_challenges)
         save_challenges()
 
 # Załaduj przy starcie
-load_challenges()
+load_challenges(startup_label="Challenges list")
 
 # Autocomplete function for challenges
 async def challenges_autocomplete(

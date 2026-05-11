@@ -6,25 +6,34 @@ import re
 import json
 from datetime import datetime
 import asyncio
+from startup_logger import record_startup_step
 
 GUILD_ID = 551503797067710504
 
 LEETIFY_API_FILE = "txt/leetify_api.txt"
 
-def load_token(filename):
+def load_token(filename, startup_label=None):
     try:
         if os.path.exists(filename):
             with open(filename, 'r', encoding="utf-8") as file:
-                print(f"{LEETIFY_API_FILE} loaded.")
-                return file.read().strip()
+                token = file.read().strip()
+                if startup_label:
+                    record_startup_step(startup_label, True, filename)
+                return token
         else:
-            print(f"File {filename} not found.")
+            if startup_label:
+                record_startup_step(startup_label, False, f"{filename} not found")
+            else:
+                print(f"File not found: {filename}.")
             return None
     except Exception as e:
-        print(f"Error loading token from {filename}: {e}")
+        if startup_label:
+            record_startup_step(startup_label, False, f"{filename}: {e}")
+        else:
+            print(f"Error loading token from {filename}: {e}")
         return None
 
-LEETIFY_API_KEY = load_token(LEETIFY_API_FILE)
+LEETIFY_API_KEY = load_token(LEETIFY_API_FILE, startup_label="Leetify API token")
 STATS_CACHE_FILE = "txt/leetify_stats_cache.json"
 
 # Słownik graczy (Nick: Steam64ID)

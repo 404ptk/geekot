@@ -8,21 +8,31 @@ import asyncio
 import os
 import io
 from PIL import Image, ImageDraw, ImageFont
+from startup_logger import record_startup_step
 
 GUILD_ID = 551503797067710504
 
-def load_token(filename):
+def load_token(filename, startup_label=None):
     try:
         with open(filename, 'r') as file:
-            return file.read().strip()
+            token = file.read().strip()
+            if startup_label:
+                record_startup_step(startup_label, True, filename)
+            return token
     except FileNotFoundError:
-        print(f"Plik {filename} nie został znaleziony. Upewnij się, że plik istnieje.")
+        if startup_label:
+            record_startup_step(startup_label, False, f"{filename} not found")
+        else:
+            print(f"File not found: {filename}. Make sure the file exists.")
         return None
     except Exception as e:
-        print(f"Wystąpił błąd podczas wczytywania tokena z pliku {filename}: {e}")
+        if startup_label:
+            record_startup_step(startup_label, False, f"{filename}: {e}")
+        else:
+            print(f"Error loading token from {filename}: {e}")
         return None
 
-FACEIT_API_KEY = load_token('txt/faceit_api.txt')
+FACEIT_API_KEY = load_token('txt/faceit_api.txt', startup_label="Faceit API token")
 
 # Lista pseudonimów graczy do rankingu Discorda
 player_nicknames = ['utopiasz', 'radzioswir', 'PhesterM9', '-Masny-', '-mateuko', 'Kvzia', 'Kajetov', 'MlodyHubii']

@@ -34,9 +34,10 @@ from commands import football
 import leetify_utils
 from commands import steam as steam_module
 from commands import relations as relations_module
+from startup_logger import record_startup_step, print_startup_summary
 
 
-games_data = games_module.load_games()  # commands/games.py
+games_data = games_module.load_games(startup_label="Games data")  # commands/games.py
 
 
 # from soundcloud_utils import *
@@ -49,25 +50,32 @@ games_data = games_module.load_games()  # commands/games.py
 #   sprawdzanie cen skrzynek z csa
 
 
-# Funkcja do wczytania tokena z pliku
-def load_token(filename):
+# Function to read a token from a file
+def load_token(filename, startup_label=None):
     try:
         with open(filename, 'r') as file:
-            print(f'{filename} loaded.')
-            return file.read().strip()
+            token = file.read().strip()
+            if startup_label:
+                record_startup_step(startup_label, True, filename)
+            else:
+                print(f"Loaded file: {filename}")
+            return token
     except FileNotFoundError:
-        print(f"Plik {filename} nie został znaleziony. Upewnij się, że plik istnieje.")
+        if startup_label:
+            record_startup_step(startup_label, False, f"{filename} not found")
+        else:
+            print(f"File not found: {filename}. Make sure the file exists.")
         return None
     except Exception as e:
-        print(f"Wystąpił błąd podczas wczytywania tokena z pliku {filename}: {e}")
+        if startup_label:
+            record_startup_step(startup_label, False, f"{filename}: {e}")
+        else:
+            print(f"Error loading token from {filename}: {e}")
         return None
 
 
-# Wczytanie tokenów
-DISCORD_TOKEN = load_token('txt/discord_token.txt')
-FACEIT_API_KEY = load_token('txt/faceit_api.txt')
-TWITCH_CLIENT_ID = load_token('txt/twitch_client_id.txt')
-TWITCH_CLIENT_SECRET = load_token('txt/twitch_client_secret.txt')
+# Load startup tokens
+DISCORD_TOKEN = load_token('txt/discord_token.txt', startup_label="Discord token")
 
 # Tworzenie klienta Discord
 intents = discord.Intents.default()
@@ -78,6 +86,7 @@ client = commands.Bot(command_prefix="!", intents=intents)
 
 reaction_name = "phester102"
 reaction_active = False
+startup_completed = False
 
 
 def save_reaction_state():
@@ -85,25 +94,38 @@ def save_reaction_state():
         json.dump({'reaction_active': reaction_active}, f)
 
 
-def load_reaction_state():
+def load_reaction_state(startup_label=None):
     global reaction_active
     try:
         with open('txt/reaction_state.json', 'r') as f:
             data = json.load(f)
             reaction_active = data.get('reaction_active', False)
-        print("reaction_state.json loaded.")
+        if startup_label:
+            record_startup_step(startup_label, True, 'txt/reaction_state.json')
+        else:
+            print("Loaded file: txt/reaction_state.json")
     except FileNotFoundError:
         reaction_active = False
-        print("Error in reading reaction_state.json.")
+        if startup_label:
+            record_startup_step(startup_label, False, 'txt/reaction_state.json not found')
+        else:
+            print("Error reading txt/reaction_state.json.")
 
 BETS_FILE = "txt/bets.json"
-def load_bets():
+def load_bets(startup_label=None):
     try:
         with open(BETS_FILE, "r") as file:
-            print(f"{BETS_FILE} loaded.")
-            return json.load(file)
+            bets = json.load(file)
+            if startup_label:
+                record_startup_step(startup_label, True, BETS_FILE)
+            else:
+                print(f"Loaded file: {BETS_FILE}")
+            return bets
     except (FileNotFoundError, json.JSONDecodeError):
-        print(f"Error in loading {BETS_FILE}. FileNotFoundError")
+        if startup_label:
+            record_startup_step(startup_label, False, f"{BETS_FILE} missing or invalid")
+        else:
+            print(f"Error loading {BETS_FILE}.")
         return {}
 
 def save_bets(bets):
@@ -112,13 +134,20 @@ def save_bets(bets):
 
 STATS_FILE = "txt/user_stats.json"
 STATS_HISTORY_FILE = "txt/user_stats_history.json"
-def load_json(file_path):
+def load_json(file_path, startup_label=None):
     try:
         with open(file_path, "r") as file:
-            print(f"{file_path} loaded.")
-            return json.load(file)
+            data = json.load(file)
+            if startup_label:
+                record_startup_step(startup_label, True, file_path)
+            else:
+                print(f"Loaded file: {file_path}")
+            return data
     except (FileNotFoundError, json.JSONDecodeError):
-        print(f"Error in loading {file_path}. FileNotFoundError")
+        if startup_label:
+            record_startup_step(startup_label, False, f"{file_path} missing or invalid")
+        else:
+            print(f"Error loading {file_path}.")
         return {}
 
 def save_json(data, file_path):
@@ -128,8 +157,8 @@ def save_json(data, file_path):
 
 TARGET_USER_NAME = "phester102"
 user_connection_count = 0
-user_stats = load_json(STATS_FILE)
-user_stats_history = load_json(STATS_HISTORY_FILE)
+user_stats = load_json(STATS_FILE, startup_label="User stats")
+user_stats_history = load_json(STATS_HISTORY_FILE, startup_label="User stats history")
 current_date = datetime.now().strftime("%Y-%m-%d")
 user_stats.setdefault(current_date, 0)
 user_stats_history.setdefault(current_date, 0)
@@ -275,25 +304,46 @@ def start_console_listener():
 # Obsługa zdarzenia - gdy bot jest gotowy
 @client.event
 async def on_ready():
-    # send_daily_stats(client)
-    load_reaction_state()
+    global startup_completed
 
-    await games_module.setup_games_commands(client, client.tree)
-    await fun_module.setup_fun_commands(client, client.tree, guild_id=GUILD_ID)
-    await excuses_module.setup_excuses_commands(client, client.tree, guild_id=GUILD_ID)
-    await minecraft.setup_minecraft_commands(client, client.tree, guild_id=GUILD_ID)
-    await help_module.setup_help_commands(client, client.tree, guild_id=GUILD_ID)
-    await instants.setup_instants_commands(client, client.tree, guild_id=GUILD_ID)
-    await twitch_kick.setup_twitch_kick_commands(client, client.tree, guild_id=551503797067710504)
-    await challenges_module.setup_challenges_commands(client, client.tree, guild_id=GUILD_ID)
-    await mod_module.setup_mod_commands(client, client.tree, guild_id=GUILD_ID)
-    await faceit_utils.setup_faceit_commands(client, client.tree, guild_id=GUILD_ID)
-    await masny_utils.setup_masny_commands(client, client.tree, guild_id=GUILD_ID)
-    await football.setup_football_commands(client, client.tree, guild_id=GUILD_ID)
-    await leetify_utils.setup_leetify_commands(client, client.tree, guild_id=GUILD_ID)
-    await steam_module.setup_steam_commands(client, client.tree, guild_id=GUILD_ID)
-    await relations_module.setup_relations_commands(client, client.tree, guild_id=GUILD_ID)
+    if startup_completed:
+        print("[Startup] on_ready was called again; startup steps were already completed.")
+        return
+
+    # send_daily_stats(client)
+    load_reaction_state(startup_label="Reaction state")
+
+    async def run_startup_step(step_name, step_coroutine):
+        try:
+            await step_coroutine
+            record_startup_step(step_name, True)
+        except Exception as exc:
+            record_startup_step(step_name, False, str(exc))
+
+    startup_steps = [
+        ("Games commands", games_module.setup_games_commands(client, client.tree)),
+        ("Fun commands", fun_module.setup_fun_commands(client, client.tree, guild_id=GUILD_ID)),
+        ("Excuses commands", excuses_module.setup_excuses_commands(client, client.tree, guild_id=GUILD_ID)),
+        ("Minecraft commands", minecraft.setup_minecraft_commands(client, client.tree, guild_id=GUILD_ID)),
+        ("Help commands", help_module.setup_help_commands(client, client.tree, guild_id=GUILD_ID)),
+        ("Instants commands", instants.setup_instants_commands(client, client.tree, guild_id=GUILD_ID)),
+        ("Twitch/Kick commands", twitch_kick.setup_twitch_kick_commands(client, client.tree, guild_id=551503797067710504)),
+        ("Challenges commands", challenges_module.setup_challenges_commands(client, client.tree, guild_id=GUILD_ID)),
+        ("Mod commands", mod_module.setup_mod_commands(client, client.tree, guild_id=GUILD_ID)),
+        ("Faceit commands", faceit_utils.setup_faceit_commands(client, client.tree, guild_id=GUILD_ID)),
+        ("Masny commands", masny_utils.setup_masny_commands(client, client.tree, guild_id=GUILD_ID)),
+        ("Football commands", football.setup_football_commands(client, client.tree, guild_id=GUILD_ID)),
+        ("Leetify commands", leetify_utils.setup_leetify_commands(client, client.tree, guild_id=GUILD_ID)),
+        ("Steam commands", steam_module.setup_steam_commands(client, client.tree, guild_id=GUILD_ID)),
+        ("Relations commands", relations_module.setup_relations_commands(client, client.tree, guild_id=GUILD_ID)),
+    ]
+
+    for step_name, step_coroutine in startup_steps:
+        await run_startup_step(step_name, step_coroutine)
     # await youtube_watch.setup_youtube_watch(client, client.tree, guild_id=GUILD_ID)  # start watcher
+
+    startup_completed = True
+    print_startup_summary()
 
     print(f'\n{client.user} has connected to Discord!\n\n'
           f'\nOptions:'

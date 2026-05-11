@@ -1,22 +1,31 @@
 import requests
 import json
+from startup_logger import record_startup_step
 
 
-def load_token(filename):
+def load_token(filename, startup_label=None):
     try:
         with open(filename, 'r') as file:
-            print(f"{filename} loaded.")
-            return file.read().strip()
+            token = file.read().strip()
+            if startup_label:
+                record_startup_step(startup_label, True, filename)
+            return token
     except FileNotFoundError:
-        print(f"Plik {filename} nie został znaleziony. Upewnij się, że plik istnieje.")
+        if startup_label:
+            record_startup_step(startup_label, False, f"{filename} not found")
+        else:
+            print(f"File not found: {filename}. Make sure the file exists.")
         return None
     except Exception as e:
-        print(f"Wystąpił błąd podczas wczytywania tokena z pliku {filename}: {e}")
+        if startup_label:
+            record_startup_step(startup_label, False, f"{filename}: {e}")
+        else:
+            print(f"Error loading token from {filename}: {e}")
         return None
 
 
-KICK_CLIENT_ID = load_token('txt/kick_client_id.txt')
-KICK_SECRET_ID = load_token('txt/kick_client_secret.txt')
+KICK_CLIENT_ID = load_token('txt/kick_client_id.txt', startup_label="Kick client ID")
+KICK_SECRET_ID = load_token('txt/kick_client_secret.txt', startup_label="Kick client secret")
 
 
 def get_kick_access_token():

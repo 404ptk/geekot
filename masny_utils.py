@@ -1,6 +1,7 @@
 import requests
 import os
 from faceit_utils import *
+from startup_logger import record_startup_step
 
 # Plik do przechowywania danych
 MASNY_FILE = "txt/masny.txt"
@@ -23,11 +24,15 @@ def save_masny_data():
 
 
 # Funkcja do wczytywania danych z pliku
-def load_masny_data():
+def load_masny_data(startup_label=None):
     # Sprawdzanie, czy plik istnieje
     if not os.path.exists(MASNY_FILE):
-        print("Unable to read masny.txt - creating a new one.")
+        if startup_label:
+            record_startup_step(startup_label, False, f"{MASNY_FILE} not found; creating a new file")
+        else:
+            print("Unable to read txt/masny.txt - creating a new one.")
         save_masny_data()  # Inicjalizacja pliku z zerowymi wartościami
+        return
 
     # Wczytywanie danych z pliku i walidacja formatu danych
     with open(MASNY_FILE, "r") as file:
@@ -38,11 +43,14 @@ def load_masny_data():
                     masny_counter[key] = int(count)
             except ValueError:
                 print(f"Error in reading line: {line}")
-        print("Masny.txt loaded.")
+        if startup_label:
+            record_startup_step(startup_label, True, MASNY_FILE)
+        else:
+            print("Loaded file: txt/masny.txt")
 
 
 # Wczytanie danych przy starcie bota
-load_masny_data()
+load_masny_data(startup_label="Masny data")
 
 # Inicjalizacja listy wymówek
 wymowki = [
@@ -59,16 +67,21 @@ def save_wymowki():
 
 
 # Dodajemy funkcję do wczytywania wymówek z pliku
-def load_wymowki():
+def load_wymowki(startup_label=None):
     if os.path.exists(WYMOWKI_FILE):
         with open(WYMOWKI_FILE, "r") as file:
             for line in file:
                 wymowki.append(line.strip())
-            print("wymowki.txt loaded.")
+            if startup_label:
+                record_startup_step(startup_label, True, WYMOWKI_FILE)
+            else:
+                print("Loaded file: txt/wymowki.txt")
+    elif startup_label:
+        record_startup_step(startup_label, False, f"{WYMOWKI_FILE} not found")
 
 
 # Wczytujemy wymówki przy starcie bota
-load_wymowki()
+load_wymowki(startup_label="Wymowki list")
 
 
 # Funkcja do wyświetlania ostatniego meczu gracza `-Masny-`

@@ -3,15 +3,21 @@ from discord import app_commands
 import json
 import os
 from typing import List, Optional
+from startup_logger import record_startup_step
 
 GAMES_FILE = "txt/gry.json"
 
 GUILD_ID = 551503797067710504
 
-def load_games():
+def load_games(startup_label=None):
     if os.path.exists(GAMES_FILE):
         with open(GAMES_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
+            games = json.load(f)
+        if startup_label:
+            record_startup_step(startup_label, True, GAMES_FILE)
+        return games
+    if startup_label:
+        record_startup_step(startup_label, False, f"{GAMES_FILE} not found")
     return []
 
 def save_games(games):
