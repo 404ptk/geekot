@@ -1,24 +1,28 @@
 # Geekot Discord Bot
 
 ### 📅 Changelogs 
-```bash
+### (11.05.2026)
+- Startup logging:
+  - Unified console output for module/file loading during bot startup.
+  - Each startup step now prints in a consistent format, e.g. `[Startup] Masny data: OK - txt/masny.txt`.
+  - Final startup summary shows loaded steps, failures, and success percentage.
+
 ### (08.02.2026)
-- /ranking (NEW):
-  * Added server activity tracking system (Voice Time & Message Count).
-  * Displays Top 5 most active users in voice channels and text chat.
-  * Automatic time tracking with session handling.
-- /sieroty:
-  * Major visual overhaul: Added avatar for #1, dynamic ranking change indicators (⬆️/⬇️/🆕).
-  * Improved table formatting and added summary footer.
-- /last:
-  * Added visual indicators for searched player (⭐) and friends (👨)
-  * Improved table alignment for nicknames with emojis
+- `/ranking` (NEW):
+  - Added server activity tracking system (Voice Time & Message Count).
+  - Displays Top 5 most active users in voice channels and text chat.
+  - Automatic time tracking with session handling.
+- `/sieroty`:
+  - Major visual overhaul: Added avatar for #1, dynamic ranking change indicators (⬆️/⬇️/🆕).
+  - Improved table formatting and added summary footer.
+- `/last`:
+  - Added visual indicators for searched player (⭐) and friends (👨)
+  - Improved table alignment for nicknames with emojis
 
 ### (07.02.2026)
 - **/discordfaceit**: Added form emojis (🔥/🤡), improved table layout, added last 5 matches history (W/L).
 - **/last**: Added ADR column, sorting by ADR (descending), reorganized columns.
 - **/sieroty**: Added "Wall of Shame" command system (`lista`, `dodaj`, `usun`) to track worst performances.
-```
 
 **Geekot** is an advanced, multi-purpose Discord bot created for the community of gamers and enthusiasts of CS2, football, and streaming. The bot integrates with multiple external APIs (Faceit, Leetify, YouTube, Twitch/Kick, Football API), providing real-time statistics and notifications.
 
@@ -54,6 +58,16 @@ Comprehensive tracking of favorite teams and league results.
 - **/wyzwania** - Random CS2 challenges.
 - **Presence Detection** - "Anti-Plaster" system that detects the appearance of a specific user online and counts their connections during the day.
 
+### Startup Logging
+When the bot starts, it now prints a unified loading trace for tokens, JSON/TXT files, and command setup steps.
+The console output uses a single format for every step and ends with a summary similar to:
+
+```text
+[Startup] Summary: 14/15 succeeded (93.3% success, 1 failed).
+```
+
+This makes it easier to spot missing files or setup failures without scanning mixed log styles.
+
 ## Technologies
 
 The project is based on **Python 3** and the **discord.py** library. It uses modern Discord features:
@@ -61,6 +75,7 @@ The project is based on **Python 3** and the **discord.py** library. It uses mod
 - **Tasks & Loops** for background tasks (YouTube monitoring, daily stats reset).
 - **Asynchronous** operations for fast performance without blocking threads.
 - **JSON & TXT** as a lightweight database for configuration and state.
+- **Startup summaries** for consistent console visibility during boot.
 
 ## Installation and Configuration
 
@@ -83,6 +98,7 @@ The project is based on **Python 3** and the **discord.py** library. It uses mod
 ## Project Structure
 
 - **main.py** - Main entry point, module loading, and event loop.
+- **startup_logger.py** - Shared startup logging helper that records every load/setup step and prints the final summary.
 - **commands/** - Modules with slash commands (grouped by topic: football, youtube, fun, etc.).
 - **utils.py** (faceit, leetify, masny...) - Business logic and external API integrations.
 - **txt/** - Configuration files and databases (ignored in public repository for security).
