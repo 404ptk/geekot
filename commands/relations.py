@@ -201,7 +201,13 @@ def apply_user_thumbnail(embed: discord.Embed, user_alias: str) -> Optional[str]
     return None
 
 
-def build_relation_embed(user_a: str, user_b: str, relation_key: str, existing_relation: Optional[str] = None) -> discord.Embed:
+def build_relation_embed(
+    user_a: str,
+    user_b: str,
+    relation_key: str,
+    existing_relation: Optional[str] = None,
+    description: Optional[str] = None,
+) -> discord.Embed:
     action_type = "update" if existing_relation else "new"
     action_text = RELATION_ACTIONS[relation_key][action_type]
     emoji = RELATION_EMOJIS.get(relation_key, "✨")
@@ -214,6 +220,7 @@ def build_relation_embed(user_a: str, user_b: str, relation_key: str, existing_r
 
     embed = discord.Embed(
         title=sentence,
+        description=f'"{description}"' if description else None,
         color=RELATION_COLORS.get(relation_key, discord.Color.green()),
     )
     apply_relation_image(embed, relation_key)
@@ -627,9 +634,10 @@ async def setup_relations_commands(client: discord.Client, tree: app_commands.Co
     @app_commands.describe(
         relacja="Typ relacji: zgoda / neutralne stosunki / uklad / kosa",
         nick2="Drugi użytkownik",
+        opis="Opcjonalny opis relacji",
     )
     @app_commands.autocomplete(relacja=relation_autocomplete, nick2=nick_autocomplete)
-    async def dodajrelacje(interaction: discord.Interaction, relacja: str, nick2: str):
+    async def dodajrelacje(interaction: discord.Interaction, relacja: str, nick2: str, opis: Optional[str] = None):
         user_a = resolve_actor_nick(interaction)
         if user_a is None:
             await interaction.response.send_message(
@@ -679,6 +687,6 @@ async def setup_relations_commands(client: discord.Client, tree: app_commands.Co
 
         relation_file = build_relation_image_file(relation_key)
         await interaction.response.send_message(
-            embed=build_relation_embed(user_a, user_b, relation_key, existing_relation),
+            embed=build_relation_embed(user_a, user_b, relation_key, existing_relation, opis),
             file=relation_file,
         )
