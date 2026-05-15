@@ -40,6 +40,8 @@ player_nicknames = ['utopiasz', 'radzioswir', 'PhesterM9', '-Masny-', '-mateuko'
 FACEIT_RANKING_FILE = "txt/faceit_ranking.txt"
 FACEIT_DAILY_STATS_FILE = "txt/faceit_daily_stats.json"
 FACEIT_WEEKLY_STATS_FILE = "txt/faceit_weekly_stats.json"
+FACEIT_LIVE_STATE_FILE = "txt/discordfaceit_live.json"
+FACEIT_LIVE_CHANNEL_ID = 1504791638264905778
 SIEROTY_FILE = "txt/sieroty.json"
 SIEROTY_RANKING_FILE = "txt/sieroty_ranking.json"
 CLIENT_REF = None  # Reference to the Discord client for background tasks
@@ -50,6 +52,133 @@ def get_guild_emoji_text(guild, emoji_name):
 
     emoji_obj = discord.utils.get(guild.emojis, name=emoji_name)
     return str(emoji_obj) if emoji_obj else ""
+
+
+def load_faceit_live_state():
+    if os.path.exists(FACEIT_LIVE_STATE_FILE):
+        try:
+            with open(FACEIT_LIVE_STATE_FILE, "r", encoding="utf-8") as file:
+                data = json.load(file)
+                if isinstance(data, dict):
+                    return data
+        except (json.JSONDecodeError, OSError):
+            pass
+    return {}
+
+
+def save_faceit_live_state(data):
+    with open(FACEIT_LIVE_STATE_FILE, "w", encoding="utf-8") as file:
+        json.dump(data, file, ensure_ascii=False, indent=4)
+
+
+def get_faceit_level_badge(guild, level):
+    if isinstance(level, int) and level > 0:
+        emoji_text = get_guild_emoji_text(guild, f"faceit{level}")
+        if emoji_text:
+            return emoji_text
+        return f"LVL {level}"
+    return "LVL ?"
+
+
+def format_faceit_form(outcomes):
+    if not outcomes:
+        return "?"
+
+    emoji_map = {
+        "W": "🟢",
+        "L": "🔴",
+        "?": "⚪",
+    }
+    return " ".join(emoji_map.get(outcome, "⚪") for outcome in outcomes)
+
+
+def collect_discordfaceit_player_stats():
+    player_stats = []
+
+    for nickname in player_nicknames:
+        player_data = get_faceit_player_data(nickname)
+        if player_data:
+            player_level = player_data.get('games', {}).get('cs2', {}).get('skill_level', 0)
+            player_elo = player_data.get('games', {}).get('cs2', {}).get('faceit_elo', 0)
+            pid = player_data.get('player_id')
+
+            last_matches_str = "N/A"
+            streak_emoji = ""
+            if pid:
+                matches = get_faceit_player_matches(pid, limit=5)
+                if matches:
+                    outcomes = []
+                    for match in matches:
+                        result = match.get('stats', {}).get('Result')
+                        if result == '1':
+                            outcomes.append('W')
+                        elif result == '0':
+                            outcomes.append('L')
+                        else:
+                            outcomes.append('?')
+                    last_matches_str = '/'.join(outcomes)
+
+                    if len(outcomes) >= 3:
+                        if outcomes[:3] == ['W', 'W', 'W']:
+                            streak_emoji = " 🔥"
+                        elif outcomes[:3] == ['L', 'L', 'L']:
+                            streak_emoji = " 😭"
+
+            player_stats.append({
+                'nickname': nickname,
+                'level': player_level if isinstance(player_level, int) else 0,
+                'elo': player_elo if isinstance(player_elo, int) else 0,
+                'last_matches_raw': last_matches_str,
+                'last_matches': format_faceit_form(last_matches_str.split('/')) if last_matches_str != "N/A" else "⚪",
+                'streak_emoji': streak_emoji,
+            })
+
+    player_stats.sort(key=lambda x: (x['elo'], x['level']), reverse=True)
+    return player_stats
+
+
+def build_discordfaceit_live_embed(guild):
+    player_stats = collect_discordfaceit_player_stats()
+    now = datetime.now().strftime("%H:%M:%S")
+    daily_stats = load_daily_stats()
+    current_date = datetime.now().strftime("%Y-%m-%d")
+    max_nickname_len = max((len(player['nickname']) for player in player_stats[:10]), default=0)
+    max_elo_len = max((len(str(player['elo'])) for player in player_stats[:10]), default=0)
+    max_daily_len = max(
+        (
+            len(
+                f"{'+' if (player['elo'] - daily_stats.get('stats', {}).get(player['nickname'], player['elo'])) > 0 else ''}{player['elo'] - daily_stats.get('stats', {}).get(player['nickname'], player['elo'])}"
+                if daily_stats.get('date') == current_date else "0"
+            )
+            for player in player_stats[:10]
+            if isinstance(player.get('elo'), int)
+        ),
+        default=1,
+    )
+
+    lines = ["", ""]
+    for index, player in enumerate(player_stats[:10], start=1):
+        level_badge = get_faceit_level_badge(guild, player['level'])
+        daily_elo_change = "0"
+        if daily_stats.get("date") == current_date:
+            start_elo = daily_stats.get("stats", {}).get(player['nickname'])
+            if start_elo is not None and isinstance(player['elo'], int):
+                elo_diff = player['elo'] - start_elo
+                daily_elo_change = f"{'+' if elo_diff > 0 else ''}{elo_diff}" if elo_diff != 0 else "0"
+        lines.append(
+            f"**{index}.** {level_badge} `{player['nickname']:<{max_nickname_len}} | {player['elo']:>{max_elo_len}} ELO | {daily_elo_change:>{max_daily_len}} | {player['last_matches']}`"
+        )
+
+    faceit_logo = get_guild_emoji_text(guild, "faceitlogo")
+    title_prefix = f"{faceit_logo} " if faceit_logo else ""
+
+    embed = discord.Embed(
+        title=f"{title_prefix} **FACEIT LIVE**",
+        description="\n".join(lines),
+        color=discord.Color.orange(),
+    )
+    embed.set_footer(text=f"Odświeżanie co 60s • {now}")
+    return embed
 
 def get_faceit_player_data(nickname):
     url = f'https://open.faceit.com/data/v4/players?nickname={nickname}'
@@ -1180,6 +1309,55 @@ async def track_daily_elo():
         with open(FACEIT_DAILY_STATS_FILE, "w") as f:
             json.dump(daily_stats, f)
 
+
+async def refresh_discordfaceit_live_message():
+    if not CLIENT_REF or not CLIENT_REF.is_ready():
+        return
+
+    channel = CLIENT_REF.get_channel(FACEIT_LIVE_CHANNEL_ID)
+    if channel is None:
+        try:
+            channel = await CLIENT_REF.fetch_channel(FACEIT_LIVE_CHANNEL_ID)
+        except (discord.Forbidden, discord.NotFound, discord.HTTPException):
+            return
+
+    if channel is None or not hasattr(channel, "send"):
+        return
+
+    embed = build_discordfaceit_live_embed(getattr(channel, "guild", None))
+    state = load_faceit_live_state()
+    saved_message_id = state.get("message_id")
+    saved_channel_id = state.get("channel_id")
+
+    message = None
+    if saved_channel_id == getattr(channel, "id", None) and saved_message_id:
+        try:
+            message = await channel.fetch_message(int(saved_message_id))
+        except (ValueError, discord.NotFound, discord.Forbidden, discord.HTTPException):
+            message = None
+
+    if message:
+        try:
+            await message.edit(embed=embed)
+            return
+        except discord.HTTPException:
+            message = None
+
+    try:
+        message = await channel.send(embed=embed)
+        try:
+            await message.pin()
+        except (discord.Forbidden, discord.HTTPException):
+            pass
+        save_faceit_live_state({"channel_id": channel.id, "message_id": message.id})
+    except discord.HTTPException as exc:
+        print(f"Nie udało się odświeżyć Faceit live: {exc}")
+
+
+@tasks.loop(minutes=1)
+async def track_discordfaceit_live():
+    await refresh_discordfaceit_live_message()
+
 # ----------------- SLASH COMMANDS -----------------
 
 async def setup_faceit_commands(client: discord.Client, tree: app_commands.CommandTree, guild_id: int = None):
@@ -1401,6 +1579,10 @@ async def setup_faceit_commands(client: discord.Client, tree: app_commands.Comma
 
     if not track_daily_elo.is_running():
         track_daily_elo.start()
+
+    if not track_discordfaceit_live.is_running():
+        track_discordfaceit_live.start()
+    await refresh_discordfaceit_live_message()
 
     sieroty_group = app_commands.Group(name="sieroty", description="Ściana wstydu (najgorsze mecze)")
 
