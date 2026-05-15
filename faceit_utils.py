@@ -140,6 +140,7 @@ def collect_discordfaceit_player_stats():
 def build_discordfaceit_live_embed(guild):
     player_stats = collect_discordfaceit_player_stats()
     now = datetime.now().strftime("%H:%M:%S")
+    footer_now = (datetime.now() + timedelta(hours=2)).strftime("%H:%M:%S")
     daily_stats = load_daily_stats()
     current_date = datetime.now().strftime("%Y-%m-%d")
     max_nickname_len = max((len(player['nickname']) for player in player_stats[:10]), default=0)
@@ -177,7 +178,7 @@ def build_discordfaceit_live_embed(guild):
         description="\n".join(lines),
         color=discord.Color.orange(),
     )
-    embed.set_footer(text=f"Odświeżanie co 60s • {now}")
+    embed.set_footer(text=f"Odświeżanie co 60s • {footer_now}")
     return embed
 
 def get_faceit_player_data(nickname):
