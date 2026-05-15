@@ -295,6 +295,7 @@ async def get_last_match_stats(nickname, guild=None):
     player_id = player_data['player_id']
     player_nickname = player_data['nickname']
     avatar_url = player_data.get('avatar', 'https://www.faceit.com/static/img/avatar.png')
+    player_elo = player_data.get('games', {}).get('cs2', {}).get('faceit_elo', 0)
     matches = get_faceit_player_matches(player_id)
     if not matches or len(matches) == 0:
         embed = discord.Embed(
@@ -363,13 +364,29 @@ async def get_last_match_stats(nickname, guild=None):
         diff = p_rating - e_rating
         diff_str = f"+{diff}" if diff > 0 else str(diff)
         
-        team_rating_str = f"MMR: {p_rating} VS ({e_rating}) | ({diff_str})"
+        team_rating_str = f"MMR: {p_rating} VS {e_rating} | ({diff_str})\n"
+        
+        player_diff = player_elo - p_rating
+        
+        if player_diff < 0:
+            abs_diff = abs(player_diff)
+            if abs_diff < 100:
+                team_rating_str += f"⬆️ {player_nickname} zagrał na MMR wyższym o **{abs_diff} elo**\n"
+            else:
+                team_rating_str += f"⬆️ {player_nickname} zagrał na MMR wyższym **aż o {abs_diff} elo**\n"
+        elif player_diff > 0:
+            if player_diff < 100:
+                team_rating_str += f"⬇️ {player_nickname} zagrał na MMR niższym o **{player_diff} elo**\n"
+            else:
+                team_rating_str += f"⬇️ {player_nickname} zagrał na MMR niższym **aż o {player_diff} elo**\n"
+        else:
+            team_rating_str += f"➡️ {player_nickname} zagrał na średnim MMR drużyny\n"
 
     map_name = match_stats.get("map", "Nieznana").replace("de_", "")
     score_display = match_stats.get("score")
     desc = f"**Mapa:** {map_name} | {match_result}"
     if score_display:
-        desc += f" | {score_display}"
+        desc += f" | {score_display}\n"
     if team_rating_str:
         desc += f"\n{team_rating_str}"
 

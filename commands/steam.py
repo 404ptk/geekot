@@ -11,6 +11,8 @@ import urllib.parse
 from datetime import datetime, timedelta
 
 STEAM_HISTORY_FILE = "txt/steam_history.json"
+CS2_UPDATES_TRACKING_FILE = "txt/cs2_updates_tracking.json"
+CS2_UPDATES_CHANNEL_ID = 1301248598108798996
 
 def load_steam_history():
     if os.path.exists(STEAM_HISTORY_FILE):
@@ -28,6 +30,25 @@ def save_steam_history(data):
             json.dump(data, f, indent=4, ensure_ascii=False)
     except Exception as e:
         logging.error(f"Error saving steam history: {e}")
+
+def load_cs2_updates_tracking():
+    """Ładuje dane śledzenia ostatniego commita CS2"""
+    if os.path.exists(CS2_UPDATES_TRACKING_FILE):
+        try:
+            with open(CS2_UPDATES_TRACKING_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception as e:
+            logging.error(f"Error loading CS2 tracking data: {e}")
+    return {"last_commit_sha": None}
+
+def save_cs2_updates_tracking(data):
+    """Zapisuje dane śledzenia ostatniego commita CS2"""
+    os.makedirs(os.path.dirname(CS2_UPDATES_TRACKING_FILE), exist_ok=True)
+    try:
+        with open(CS2_UPDATES_TRACKING_FILE, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=4, ensure_ascii=False)
+    except Exception as e:
+        logging.error(f"Error saving CS2 tracking data: {e}")
 
 async def fetch_case_history(session: aiohttp.ClientSession, case_name: str):
     """Pobiera stronę HTML skrzynki i wyciąga historię cen"""
@@ -100,6 +121,132 @@ def format_price_diff(current, old):
     elif diff < 0:
         return f"📉 -${abs(diff):.2f}"
     return "➖ b/z"
+
+async def fetch_cs2_commits(session: aiohttp.ClientSession, per_page: int = 3):
+    """Pobiera ostatnie commity z repozytorium GameTracking-CS2"""
+    url = "https://api.github.com/repos/SteamDatabase/GameTracking-CS2/commits"
+    params = {
+        "per_page": per_page,
+        "page": 1
+    }
+    headers = {
+        "Accept": "application/vnd.github.v3+json",
+        "User-Agent": "Bot-Geekot"
+    }
+    
+    try:
+        async with session.get(url, params=params, headers=headers) as resp:
+            if resp.status == 200:
+                return await resp.json()
+            else:
+                logging.error(f"GitHub API error: {resp.status}")
+    except Exception as e:
+        logging.error(f"Error fetching CS2 commits: {e}")
+    return []
+
+async def fetch_commit_details(session: aiohttp.ClientSession, commit_sha: str):
+    """Pobiera szczegóły konkretnego commita"""
+    url = f"https://api.github.com/repos/SteamDatabase/GameTracking-CS2/commits/{commit_sha}"
+    headers = {
+        "Accept": "application/vnd.github.v3+json",
+        "User-Agent": "Bot-Geekot"
+    }
+    
+    try:
+        async with session.get(url, headers=headers) as resp:
+            if resp.status == 200:
+                return await resp.json()
+    except Exception as e:
+        logging.error(f"Error fetching commit details: {e}")
+    return None
+
+def format_file_changes(files: list) -> str:
+    """Formatuje zmiany w plikach na czytelny format - max 1024 znaki"""
+    if not files:
+        return "Brak informacji o zmianach"
+    
+    # Filtruj tylko zmienione pliki (modified, added, removed)
+    important_files = [f for f in files if f.get("status") in ["modified", "added", "removed"]]
+    
+    # Jeśli brak ważnych zmian, pokaz sumę
+    if not important_files:
+        return f"Zmieniono {len(files)} plik(ów)"
+    
+    formatted = ""
+    for file in important_files[:12]:  # Limit do 12 plików
+        filename = file.get("filename", "Unknown")
+        status = file.get("status", "unknown")
+        additions = file.get("additions", 0)
+        deletions = file.get("deletions", 0)
+        
+        # Emoji dla różnych typów zmian
+        status_emoji = {
+            "added": "✅",
+            "removed": "❌",
+            "modified": "📝"
+        }.get(status, "❓")
+        
+        change_summary = ""
+        if additions > 0:
+            change_summary += f"+{additions}"
+        if deletions > 0:
+            if change_summary:
+                change_summary += f"/-{deletions}"
+            else:
+                change_summary = f"-{deletions}"
+        
+        # Skracaj nazwy plików jeśli za długie
+        if len(filename) > 50:
+            filename = filename[:47] + "..."
+        
+        line = f"{status_emoji} `{filename}`"
+        if change_summary:
+            line += f" ({change_summary})"
+        line += "\n"
+        
+        # Sprawdzaj czy nie przekroczymy limitu
+        if len(formatted) + len(line) > 1000:
+            remaining = len(important_files) - (important_files.index(file) + 1)
+            if remaining > 0:
+                formatted += f"\n... i {remaining} więcej plik(ów)"
+            break
+        
+        formatted += line
+    
+    return formatted if formatted else f"Zmieniono {len(important_files)} plik(ów)"
+
+@tasks.loop(minutes=15)
+async def monitor_cs2_updates_loop():
+    """Monitoruje aktualizacje CS2 z GameTracking-CS2"""
+    
+    try:
+        tracking_data = load_cs2_updates_tracking()
+        last_commit_sha = tracking_data.get("last_commit_sha")
+        
+        async with aiohttp.ClientSession() as session:
+            commits = await fetch_cs2_commits(session)
+            
+            if not commits:
+                return
+            
+            latest_commit = commits[0]
+            latest_sha = latest_commit.get("sha")
+            
+            if latest_sha != last_commit_sha:
+                commit_details = await fetch_commit_details(session, latest_sha)
+                
+                if commit_details:
+                    tracking_data["last_commit_sha"] = latest_sha
+                    tracking_data["last_commit_time"] = datetime.now().isoformat()
+                    tracking_data["pending_commits"] = tracking_data.get("pending_commits", [])
+                    
+                    tracking_data["pending_commits"].append(commit_details)
+                    save_cs2_updates_tracking(tracking_data)
+                    
+                    logging.info(f"Nowa aktualizacja CS2: {commit_details.get('commit', {}).get('message', 'N/A').split(chr(10))[0]}")
+    
+    except Exception as e:
+        logging.error(f"Error in CS2 updates loop: {e}")
 
 @tasks.loop(hours=6)
 async def update_steam_history_loop():
@@ -178,6 +325,89 @@ async def setup_steam_commands(client: discord.Client, tree: app_commands.Comman
     
     if not update_steam_history_loop.is_running():
         update_steam_history_loop.start()
+    
+    if not monitor_cs2_updates_loop.is_running():
+        monitor_cs2_updates_loop.start()
+    
+    async def send_pending_cs2_updates():
+        """Wysyła zakolejkowane aktualizacje CS2 na Discord"""
+        tracking_data = load_cs2_updates_tracking()
+        pending_commits = tracking_data.get("pending_commits", [])
+        
+        if not pending_commits:
+            return
+        
+        try:
+            channel = client.get_channel(CS2_UPDATES_CHANNEL_ID)
+            if not channel:
+                logging.error(f"Cannot find CS2 updates channel: {CS2_UPDATES_CHANNEL_ID}")
+                return
+            
+            for commit in pending_commits[:5]:  # Wysyłaj max 5 na raz
+                try:
+                    commit_msg = commit.get("commit", {}).get("message", "N/A")
+                    commit_sha = commit.get("sha", "?")[:7]
+                    author = commit.get("commit", {}).get("author", {}).get("name", "Unknown")
+                    files = commit.get("files", [])
+                    
+                    # Pierwsze 50 znaków wiadomości
+                    title = commit_msg.split('\n')[0][:100]
+                    
+                    embed = discord.Embed(
+                        title="🎮 CS2 Update",
+                        description=f"**{title}**",
+                        color=discord.Color.blue(),
+                        url=f"https://github.com/SteamDatabase/GameTracking-CS2/commit/{commit.get('sha')}"
+                    )
+                    
+                    embed.add_field(
+                        name="Commit SHA",
+                        value=f"`{commit_sha}`",
+                        inline=True
+                    )
+                    
+                    embed.add_field(
+                        name="Autor",
+                        value=author,
+                        inline=True
+                    )
+                    
+                    embed.add_field(
+                        name="📁 Zmienione pliki",
+                        value=format_file_changes(files),
+                        inline=False
+                    )
+                    
+                    # Dodaj linkę do fullmessage jeśli jest wieloliniowa
+                    if '\n' in commit_msg:
+                        embed.add_field(
+                            name="📝 Full Commit",
+                            value=f"[Zobacz pełną wiadomość](https://github.com/SteamDatabase/GameTracking-CS2/commit/{commit.get('sha')})",
+                            inline=False
+                        )
+                    
+                    embed.set_footer(text="GameTracking-CS2 | SteamDatabase")
+                    
+                    await channel.send(embed=embed)
+                    await asyncio.sleep(1)  # Delay między wiadomościami
+                    
+                except Exception as e:
+                    logging.error(f"Error sending CS2 update: {e}")
+            
+            # Wyczyść wysłane commity
+            tracking_data["pending_commits"] = []
+            save_cs2_updates_tracking(tracking_data)
+            
+        except Exception as e:
+            logging.error(f"Error in send_pending_cs2_updates: {e}")
+    
+    # Dodaj task do wysyłania commitów
+    @tasks.loop(seconds=30)
+    async def cs2_update_sender():
+        await send_pending_cs2_updates()
+    
+    if not cs2_update_sender.is_running():
+        cs2_update_sender.start()
 
     async def case_autocomplete(interaction: discord.Interaction, current: str):
         history_cache = load_steam_history()
