@@ -486,9 +486,7 @@ async def get_last_match_stats(nickname, guild=None):
     if ratings and player_team and enemy_team:
         p_team = ratings.get(player_team, {})
         e_team = ratings.get(enemy_team, {})
-        p_name = p_team.get("name", "Twoja drużyna")
         p_rating = p_team.get("rating", 0)
-        e_name = e_team.get("name", "Przeciwnik")
         e_rating = e_team.get("rating", 0)
         
         diff = p_rating - e_rating
@@ -530,12 +528,27 @@ async def get_last_match_stats(nickname, guild=None):
     )
     embed.set_thumbnail(url=avatar_url)
 
-    players_list = []
-    player_detailed_stats = None
-    if player_team:
-        for player in match_stats["teams"][player_team]["players"]:
+    # Fetch roster with levels
+    roster = get_faceit_match_roster(match_id)
+    
+    # Get team names from ratings
+    p_name = "Twoja drużyna"
+    e_name = "Przeciwnik"
+    if ratings and player_team and enemy_team:
+        p_team = ratings.get(player_team, {})
+        e_team = ratings.get(enemy_team, {})
+        p_name = p_team.get("name", "Twoja drużyna")
+        e_name = e_team.get("name", "Przeciwnik")
+    
+    def parse_team_players(team_key):
+        """Build player rows for a specific team."""
+        players = []
+        team_player_detailed_stats = None
+
+        for player in match_stats["teams"][team_key]["players"]:
             if player["nickname"] == player_nickname:
-                player_detailed_stats = player
+                team_player_detailed_stats = player
+
             kills = player.get("kills", 0)
             deaths = player.get("deaths", 0)
             assists = player.get("assists", 0)
@@ -545,77 +558,106 @@ async def get_last_match_stats(nickname, guild=None):
                 adr_val = float(adr)
             except ValueError:
                 adr_val = 0.0
-            
+
             kd_ratio = kills / deaths if deaths > 0 else float(kills)
-            
-            players_list.append({
+
+            # Get level from roster
+            p_level = roster.get(player["nickname"], {}).get("level", 0)
+            level_badge = get_faceit_level_badge(guild, p_level)
+
+            players.append({
                 "nickname": player["nickname"],
                 "kills": kills,
                 "deaths": deaths,
                 "assists": assists,
                 "hs": hs,
                 "adr": adr_val,
-                "kd_ratio": kd_ratio,
-                "kda_str": f"{kills}/{deaths}/{assists}",
                 "adr_str": f"{adr_val:.0f}",
                 "hs_str": str(hs),
-                "kd_str": f"{kd_ratio:.2f}"
+                "kd_str": f"{kd_ratio:.2f}",
+                "level_badge": level_badge,
+                "is_target": player["nickname"] == player_nickname,
+                "is_premade": player["nickname"] in player_nicknames,
             })
 
-    # Sort by ADR (descending)
-    players_list.sort(key=lambda x: x["adr"], reverse=True)
+        players.sort(key=lambda x: x["adr"], reverse=True)
+        return players, team_player_detailed_stats
 
-    # Decorate nicknames with emojis
-    for p in players_list:
-        if p["nickname"] == player_nickname:
-            p["nickname"] = f"⭐ {p['nickname']}"
-        elif p["nickname"] in player_nicknames:
-            p["nickname"] = f"👨 {p['nickname']}"
-        else:
-            p["nickname"] = f"⬛ {p['nickname']}"
+    player_team_players = []
+    player_detailed_stats = None
+    if player_team:
+        player_team_players, player_detailed_stats = parse_team_players(player_team)
 
-    # Calculate dynamic widths
-    w_nick = len("Gracz")
-    w_kda = len("K/D/A")
+    enemy_team_players = []
+    if enemy_team:
+        enemy_team_players, _ = parse_team_players(enemy_team)
+
+    # Shared widths across both teams so both tables align identically.
+    all_players = player_team_players + enemy_team_players
+    w_nick = len("Nick")
+    w_k = len("K")
+    w_d = len("D")
+    w_a = len("A")
     w_kd = len("K/D")
     w_hs = len("HS")
     w_adr = len("ADR")
 
-    for p in players_list:
+    for p in all_players:
         w_nick = max(w_nick, len(p["nickname"]))
-        w_kda = max(w_kda, len(p["kda_str"]))
+        w_k = max(w_k, len(str(p["kills"])))
+        w_d = max(w_d, len(str(p["deaths"])))
+        w_a = max(w_a, len(str(p["assists"])))
         w_kd = max(w_kd, len(p["kd_str"]))
         w_hs = max(w_hs, len(p["hs_str"]))
         w_adr = max(w_adr, len(p["adr_str"]))
 
-    # Add padding (2 spaces)
-    pad = 2
+    pad = 1
     w_nick += pad
-    w_kda += pad
+    w_k += pad
+    w_d += pad
+    w_a += pad
     w_kd += pad
     w_hs += pad
     w_adr += pad
 
-    # Construct table
-    match_summary = "```\n"
-    # Header - manually adjusted spacing for alignment
-    match_summary += f"{'Gracz'.ljust(w_nick)}{'  K/D/A'.ljust(w_kda-1)}{'  K/D'.ljust(w_kd+1)}{' HS'.ljust(w_hs)}{'ADR'.ljust(w_adr)}\n"
-    match_summary += "-" * (w_nick + w_kda + w_kd + w_hs + w_adr) + "\n"
+    def format_team_stats(players):
+        header = f"`-- {'Nick'.ljust(w_nick)}{'K'.ljust(w_k)}{'D'.ljust(w_d)}{'A'.ljust(w_a)}{'K/D'.ljust(w_kd)}{'ADR'.ljust(w_adr)}{'HS'.ljust(w_hs)}`\n"
+        team_table = header
 
-    for p in players_list:
-        match_summary += (
-            f"{p['nickname'].ljust(w_nick)}"
-            f"{p['kda_str'].ljust(w_kda)}"
-            f"{p['kd_str'].ljust(w_kd)}"
-            f"{p['hs_str'].ljust(w_hs)}"
-            f"{p['adr_str'].ljust(w_adr)}\n"
-        )
-    match_summary += "```"
+        for p in players:
+            # Emoji outside backticks, rest inside for Discord to render emoji properly.
+            line = f"{p['level_badge']} `{p['nickname'].ljust(w_nick)}"
+            line += f"{str(p['kills']).ljust(w_k)}"
+            line += f"{str(p['deaths']).ljust(w_d)}"
+            line += f"{str(p['assists']).ljust(w_a)}"
+            line += f"{p['kd_str'].ljust(w_kd)}"
+            line += f"{p['adr_str'].ljust(w_adr)}"
+            line += f"{p['hs_str'].ljust(w_hs)}`"
+            if p["is_target"]:
+                line += " 🎯"
+            elif p["is_premade"]:
+                line += " 🤝"
+            line += "\n"
+            team_table += line
+
+        return team_table
+
+    # Get player's team stats
+    player_team_stats = format_team_stats(player_team_players)
     embed.add_field(
-        name=f"📊 Statystyki",
-        value=match_summary if match_summary else "Brak danych",
+        name=f"🛡️ {p_name}",
+        value=player_team_stats if player_team_stats else "Brak danych",
         inline=False
     )
+
+    # Get enemy team stats
+    if enemy_team_players:
+        enemy_team_stats = format_team_stats(enemy_team_players)
+        embed.add_field(
+            name=f"🛡️ {e_name}",
+            value=enemy_team_stats if enemy_team_stats else "Brak danych",
+            inline=False
+        )
 
     if player_detailed_stats:
         pds = player_detailed_stats
@@ -1326,16 +1368,18 @@ async def refresh_discordfaceit_live_message():
         return
 
     embed = build_discordfaceit_live_embed(getattr(channel, "guild", None))
-    state = load_faceit_live_state()
-    saved_message_id = state.get("message_id")
-    saved_channel_id = state.get("channel_id")
-
+    
+    # Szukamy ostatnią wiadomość od bota na kanale (zamiast polegać na cache)
     message = None
-    if saved_channel_id == getattr(channel, "id", None) and saved_message_id:
-        try:
-            message = await channel.fetch_message(int(saved_message_id))
-        except (ValueError, discord.NotFound, discord.Forbidden, discord.HTTPException):
-            message = None
+    try:
+        async for msg in channel.history(limit=10):
+            # Szukamy wiadomości od bota (bez autora lub od tego samego bota)
+            if msg.author == CLIENT_REF.user:
+                # To jest wiadomość od naszego bota
+                message = msg
+                break
+    except (discord.Forbidden, discord.HTTPException):
+        pass
 
     if message:
         try:
@@ -1344,12 +1388,15 @@ async def refresh_discordfaceit_live_message():
         except discord.HTTPException:
             message = None
 
+    # Jeśli nie ma starej wiadomości, wysyłamy nową
     try:
         message = await channel.send(embed=embed)
         try:
+            # Pinujemy wiadomość jeśli to możliwe
             await message.pin()
         except (discord.Forbidden, discord.HTTPException):
             pass
+        # Opcjonalnie: zapisujemy state jako backup
         save_faceit_live_state({"channel_id": channel.id, "message_id": message.id})
     except discord.HTTPException as exc:
         print(f"Nie udało się odświeżyć Faceit live: {exc}")
