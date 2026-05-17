@@ -88,5 +88,3 @@ async def setup_minecraft_commands(client: discord.Client, tree: app_commands.Co
         )
 
         await interaction.response.send_message(embed=embed)
-
-    print("Minecraft slash commands registered.")

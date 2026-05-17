@@ -44,6 +44,7 @@ FACEIT_LIVE_STATE_FILE = "txt/discordfaceit_live.json"
 FACEIT_LIVE_CHANNEL_ID = 1504791638264905778
 SIEROTY_FILE = "txt/sieroty.json"
 SIEROTY_RANKING_FILE = "txt/sieroty_ranking.json"
+SIEROTY_WSTYDU_IMAGE_FILE = os.path.join(os.path.dirname(__file__), "images", "ranking", "sciana_wstydu.png")
 CLIENT_REF = None  # Reference to the Discord client for background tasks
 
 def get_guild_emoji_text(guild, emoji_name):
@@ -1064,6 +1065,73 @@ def save_sieroty(data):
     with open(SIEROTY_FILE, "w", encoding="utf-8") as file:
         json.dump(data, file, ensure_ascii=False, indent=4)
 
+def get_sieroty_entry_key(entry):
+    return f"{entry.get('match_id')}_{entry.get('nick')}_{entry.get('date')}"
+
+def get_sieroty_lobby_link(entry, ranking_lookup=None):
+    if ranking_lookup:
+        ranking_entry = ranking_lookup.get(get_sieroty_entry_key(entry))
+        if ranking_entry:
+            lobby_link = str(ranking_entry.get("lobby_link", "")).strip()
+            if lobby_link:
+                return lobby_link
+
+            match_id = str(ranking_entry.get("match_id", "")).strip()
+            if match_id and match_id.lower() != "manual":
+                return f"https://www.faceit.com/en/cs2/room/{match_id}/scoreboard"
+
+    lobby_link = str(entry.get("lobby_link", "")).strip()
+    if lobby_link:
+        return lobby_link
+
+    match_id = str(entry.get("match_id", "")).strip()
+    if match_id and match_id.lower() != "manual":
+        return f"https://www.faceit.com/en/cs2/room/{match_id}/scoreboard"
+
+    return ""
+
+def get_sieroty_kd_value(entry):
+    kd_value = str(entry.get("kd", "")).strip()
+    if kd_value and kd_value.upper() != "N/A":
+        return kd_value
+
+    kda_value = str(entry.get("kda", "")).strip()
+    parts = kda_value.split("/")
+    if len(parts) >= 2:
+        try:
+            kills = float(parts[0])
+            deaths = float(parts[1])
+            if deaths > 0:
+                return f"{kills / deaths:.2f}"
+            return f"{kills:.2f}"
+        except ValueError:
+            pass
+
+    return "N/A"
+
+def build_sieroty_success_embed(player_data, real_nick, date_str, target_stats, match_id):
+    avatar_url = player_data.get("avatar") or "https://www.faceit.com/static/img/avatar.png"
+    kills = int(target_stats.get("kills", 0))
+    deaths = int(target_stats.get("deaths", 0))
+    assists = int(target_stats.get("assists", 0))
+    hs = int(target_stats.get("headshots", 0))
+    adr = target_stats.get("adr", "0")
+    kd_ratio = kills / deaths if deaths > 0 else float(kills)
+    lobby_link = f"https://www.faceit.com/en/cs2/room/{match_id}/scoreboard"
+
+    embed = discord.Embed(
+        title="🤡 Dodano do listy sierot",
+        description=f"**{real_nick}** | {date_str}",
+        color=discord.Color.orange(),
+    )
+    embed.set_thumbnail(url=avatar_url)
+    embed.add_field(name="K/D/A", value=f"{kills}/{deaths}/{assists}", inline=True)
+    embed.add_field(name="K/D", value=f"{kd_ratio:.2f}", inline=True)
+    embed.add_field(name="ADR", value=str(adr), inline=True)
+    embed.add_field(name="HS", value=f"{hs}%", inline=True)
+    embed.add_field(name="", value=f"[🔗 Lobby]({lobby_link})", inline=False)
+    return embed
+
 def load_sieroty_ranking():
     if os.path.exists(SIEROTY_RANKING_FILE):
         try:
@@ -1596,35 +1664,6 @@ async def setup_faceit_commands(client: discord.Client, tree: app_commands.Comma
         reset_faceit_ranking()
         await interaction.response.send_message("✅ Ranking Faceit został zresetowany (plik faceit_ranking.txt usunięty).", ephemeral=True)
 
-    # @tree.command(
-    #     name="tygodniowka",
-    #     description="Pokazuje podsumowanie obecnego tygodnia Faceit (symulacja)",
-    #     guild=guild
-    # )
-    # async def tygodniowka(interaction: discord.Interaction):
-    #     await interaction.response.defer()
-    #     
-    #     # Calculate Start of Current Week (Monday)
-    #     now = datetime.now()
-    #     start_of_week = now - timedelta(days=now.weekday())
-    #     start_of_week = start_of_week.replace(hour=0, minute=0, second=0, microsecond=0)
-    #     start_ts = start_of_week.timestamp()
-    #     end_ts = now.timestamp()
-    #     
-    #     # Load snapshot stats
-    #     weekly_stats = load_weekly_stats()
-    #     snapshot_elos = weekly_stats.get("stats", {})
-    #     
-    #     embed = create_weekly_stats_embed(
-    #         start_ts,
-    #         end_ts,
-    #         snapshot_elos,
-    #         "📅 **Tygodniówka faceit (w trakcie)**",
-    #         f"Statystyki od: {start_of_week.strftime('%Y-%m-%d')} do teraz."
-    #     )
-    #         
-    #     await interaction.followup.send(embed=embed)
-
     if not track_daily_elo.is_running():
         track_daily_elo.start()
 
@@ -1649,9 +1688,10 @@ async def setup_faceit_commands(client: discord.Client, tree: app_commands.Comma
 
         # Load previous ranking for comparison
         previous_ranking = load_sieroty_ranking()
+        previous_lookup = {get_sieroty_entry_key(entry): entry for entry in previous_ranking}
         previous_map = {}
         for idx, entry in enumerate(previous_ranking):
-            key = f"{entry.get('match_id')}_{entry.get('nick')}_{entry.get('date')}"
+            key = get_sieroty_entry_key(entry)
             previous_map[key] = idx
 
         embed = discord.Embed(
@@ -1660,29 +1700,21 @@ async def setup_faceit_commands(client: discord.Client, tree: app_commands.Comma
             color=discord.Color.orange()
         )
         
-        # 1. Fetch avatar of the #1 worst player
-        if sieroty_data:
-            top_sierota = sieroty_data[0]
-            top_nick = top_sierota.get('nick')
-            if top_nick:
-                p_data = get_faceit_player_data(top_nick)
-                if p_data:
-                     avatar_url = p_data.get('avatar') or "https://www.faceit.com/static/img/avatar.png"
-                     embed.set_thumbnail(url=avatar_url)
+        sciana_wstydu_image = None
+        if os.path.exists(SIEROTY_WSTYDU_IMAGE_FILE):
+            sciana_wstydu_image = discord.File(SIEROTY_WSTYDU_IMAGE_FILE, filename="sciana_wstydu.png")
+            embed.set_thumbnail(url="attachment://sciana_wstydu.png")
 
         # Pre-calc widths for alignment
         max_adr_len = 0
         max_kd_len = 0
-        max_hs_len = 0
         
         for entry in sieroty_data:
-            kd_str = str(entry.get('kda', entry.get('kd', 'N/A')))
+            kd_str = get_sieroty_kd_value(entry)
             adr_str = str(entry.get('adr'))
-            hs_str = str(entry.get('hs')) + "%"
             
             if len(adr_str) > max_adr_len: max_adr_len = len(adr_str)
             if len(kd_str) > max_kd_len: max_kd_len = len(kd_str)
-            if len(hs_str) > max_hs_len: max_hs_len = len(hs_str)
 
         # Build list
         for index, entry in enumerate(sieroty_data):
@@ -1698,7 +1730,7 @@ async def setup_faceit_commands(client: discord.Client, tree: app_commands.Comma
 
             # Position change
             position_change = ""
-            key = f"{entry.get('match_id')}_{entry.get('nick')}_{entry.get('date')}"
+            key = get_sieroty_entry_key(entry)
             if key in previous_map:
                 prev_pos = previous_map[key]
                 if prev_pos > index:
@@ -1711,15 +1743,19 @@ async def setup_faceit_commands(client: discord.Client, tree: app_commands.Comma
                  position_change = " 🆕"
 
             # Stats Formatting
-            kd_val = str(entry.get('kda', entry.get('kd', 'N/A')))
+            kda_val = str(entry.get('kda', entry.get('kd', 'N/A')))
+            kd_val = get_sieroty_kd_value(entry)
             adr_val = str(entry.get('adr'))
-            hs_val = str(entry.get('hs')) + "%"
 
             padded_adr = adr_val.ljust(max_adr_len)
             padded_kd = kd_val.ljust(max_kd_len)
-            padded_hs = hs_val.ljust(max_hs_len)
 
-            value_str = f"```\nADR: {padded_adr} | K/D: {padded_kd} | HS: {padded_hs}\n```"
+            lobby_link = get_sieroty_lobby_link(entry, previous_lookup)
+            value_str = f"\n`ADR: {padded_adr} | K/D/A: {kda_val} | K/D: {padded_kd}`"
+            if lobby_link:
+                value_str += f" [Lobby]({lobby_link})"
+            else:
+                value_str += " Brak"
 
             embed.add_field(
                 name=f"{rank_prefix} **{entry['nick']}** ({entry['date']}){position_change}",
@@ -1743,7 +1779,10 @@ async def setup_faceit_commands(client: discord.Client, tree: app_commands.Comma
         # Save ranking for next compare
         save_sieroty_ranking(sieroty_data)
         
-        await interaction.response.send_message(embed=embed)
+        if sciana_wstydu_image:
+            await interaction.response.send_message(embed=embed, file=sciana_wstydu_image)
+        else:
+            await interaction.response.send_message(embed=embed)
 
     @sieroty_group.command(name="dodaj", description="Dodaje ostatni mecz gracza do listy sierot")
     @app_commands.describe(nick="Nick gracza")
@@ -1810,14 +1849,16 @@ async def setup_faceit_commands(client: discord.Client, tree: app_commands.Comma
             "kda": kda_str,
             "kd": f"{kd_ratio:.2f}", # Keep for potential backward compat or other use
             "hs": str(target_stats['headshots']),
-            "match_id": match_id
+            "match_id": match_id,
+            "lobby_link": f"https://www.faceit.com/en/cs2/room/{match_id}/scoreboard"
         }
         
         data = load_sieroty()
         data.append(entry)
         save_sieroty(data)
         
-        await interaction.followup.send(f"🤡 Dodano **{real_nick}** do listy sierot!")
+        success_embed = build_sieroty_success_embed(player_data, real_nick, date_str, target_stats, match_id)
+        await interaction.followup.send(embed=success_embed)
 
     @sieroty_group.command(name="usun", description="Usuwa ostatni wpis gracza z listy sierot")
     @app_commands.describe(nick="Nick gracza")
@@ -1887,13 +1928,21 @@ def save_masny_data(data):
         except ValueError:
             pass
 
+        previous_ranking = load_sieroty_ranking()
+        previous_lookup = {get_sieroty_entry_key(entry): entry for entry in previous_ranking}
+
         embed = discord.Embed(title="Ściana Wstydu", description="Lista najgorszych występów w historii:", color=discord.Color.orange())
         
         desc = ""
         for entry in sieroty_data:
             # Prefer 'kda' field if exists, otherwise fallback to 'kd'
             kd_val = entry.get('kda', entry.get('kd', 'N/A'))
-            desc += f"🗓️ **{entry['date']}** 👤 **{entry['nick']}**\n📉 ADR: {entry['adr']} | K/D/A: {kd_val} | HS: {entry['hs']}%\n\n"
+            lobby_link = get_sieroty_lobby_link(entry, previous_lookup)
+            desc += f"🗓️ **{entry['date']}** 👤 **{entry['nick']}**\n📉 ADR: {entry['adr']} | K/D/A: {kd_val} | HS: {entry['hs']}%\n"
+            if lobby_link:
+                desc += f"🔗 [Lobby]({lobby_link})\n\n"
+            else:
+                desc += "🔗 Lobby do uzupełnienia\n\n"
         
         embed.description = desc
         await interaction.response.send_message(embed=embed)
@@ -1963,14 +2012,16 @@ def save_masny_data(data):
             "kda": kda_str,
             "kd": f"{kd_ratio:.2f}", # Keep for potential backward compat or other use
             "hs": str(target_stats['headshots']),
-            "match_id": match_id
+            "match_id": match_id,
+            "lobby_link": f"https://www.faceit.com/en/cs2/room/{match_id}/scoreboard"
         }
         
         data = load_sieroty()
         data.append(entry)
         save_sieroty(data)
         
-        await interaction.followup.send(f"🤡 Dodano **{real_nick}** do listy sierot!")
+        success_embed = build_sieroty_success_embed(player_data, real_nick, date_str, target_stats, match_id)
+        await interaction.followup.send(embed=success_embed)
 
     @sieroty_group.command(name="usun", description="Usuwa ostatni wpis gracza z listy sierot")
     @app_commands.describe(nick="Nick gracza")

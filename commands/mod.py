@@ -133,5 +133,3 @@ async def setup_mod_commands(client: discord.Client, tree: discord.app_commands.
             await interaction.response.send_message("✅ Usunięto wszystkie globalne komendy slash.")
         except Exception as e:
             await interaction.response.send_message(f"❌ Błąd podczas czyszczenia globalnych komend: {e}", ephemeral=True)
-
-    print("Slash komendy administracyjne zarejestrowane w mod.py")
