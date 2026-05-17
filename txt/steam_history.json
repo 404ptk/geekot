@@ -3,9 +3,9 @@
         {
             "name": "Fever Case",
             "hash_name": "Fever Case",
-            "sell_listings": 488167,
-            "sell_price": 94,
-            "sell_price_text": "$0.94",
+            "sell_listings": 482246,
+            "sell_price": 93,
+            "sell_price_text": "$0.93",
             "app_icon": "https://cdn.fastly.steamstatic.com/steamcommunity/public/images/apps/730/8dbc71957312bbd3baea65848b545be9eae2a355.jpg",
             "app_name": "Counter-Strike 2",
             "asset_description": {
@@ -23,14 +23,14 @@
                 "market_bucket_group_name": "Fever Case",
                 "market_bucket_group_id": "G18DF363004"
             },
-            "sale_price_text": "$0.90"
+            "sale_price_text": "$0.89"
         },
         {
             "name": "Kilowatt Case",
             "hash_name": "Kilowatt Case",
-            "sell_listings": 428784,
-            "sell_price": 38,
-            "sell_price_text": "$0.38",
+            "sell_listings": 458825,
+            "sell_price": 35,
+            "sell_price_text": "$0.35",
             "app_icon": "https://cdn.fastly.steamstatic.com/steamcommunity/public/images/apps/730/8dbc71957312bbd3baea65848b545be9eae2a355.jpg",
             "app_name": "Counter-Strike 2",
             "asset_description": {
@@ -48,14 +48,14 @@
                 "market_bucket_group_name": "Kilowatt Case",
                 "market_bucket_group_id": "G18A8263004"
             },
-            "sale_price_text": "$0.37"
+            "sale_price_text": "$0.34"
         },
         {
             "name": "Dreams & Nightmares Case",
             "hash_name": "Dreams & Nightmares Case",
-            "sell_listings": 256733,
-            "sell_price": 221,
-            "sell_price_text": "$2.21",
+            "sell_listings": 292331,
+            "sell_price": 210,
+            "sell_price_text": "$2.10",
             "app_icon": "https://cdn.fastly.steamstatic.com/steamcommunity/public/images/apps/730/8dbc71957312bbd3baea65848b545be9eae2a355.jpg",
             "app_name": "Counter-Strike 2",
             "asset_description": {
@@ -73,14 +73,14 @@
                 "market_bucket_group_name": "Dreams & Nightmares Case",
                 "market_bucket_group_id": "G18D2253004"
             },
-            "sale_price_text": "$2.12"
+            "sale_price_text": "$2.01"
         },
         {
             "name": "Revolution Case",
             "hash_name": "Revolution Case",
-            "sell_listings": 254206,
-            "sell_price": 49,
-            "sell_price_text": "$0.49",
+            "sell_listings": 248959,
+            "sell_price": 47,
+            "sell_price_text": "$0.47",
             "app_icon": "https://cdn.fastly.steamstatic.com/steamcommunity/public/images/apps/730/8dbc71957312bbd3baea65848b545be9eae2a355.jpg",
             "app_name": "Counter-Strike 2",
             "asset_description": {
@@ -98,14 +98,14 @@
                 "market_bucket_group_name": "Revolution Case",
                 "market_bucket_group_id": "G1890263004"
             },
-            "sale_price_text": "$0.47"
+            "sale_price_text": "$0.45"
         },
         {
             "name": "Recoil Case",
             "hash_name": "Recoil Case",
-            "sell_listings": 177708,
-            "sell_price": 63,
-            "sell_price_text": "$0.63",
+            "sell_listings": 204914,
+            "sell_price": 58,
+            "sell_price_text": "$0.58",
             "app_icon": "https://cdn.fastly.steamstatic.com/steamcommunity/public/images/apps/730/8dbc71957312bbd3baea65848b545be9eae2a355.jpg",
             "app_name": "Counter-Strike 2",
             "asset_description": {
@@ -123,14 +123,14 @@
                 "market_bucket_group_name": "Recoil Case",
                 "market_bucket_group_id": "G18EE253004"
             },
-            "sale_price_text": "$0.61"
+            "sale_price_text": "$0.56"
         },
         {
             "name": "Fracture Case",
             "hash_name": "Fracture Case",
-            "sell_listings": 105173,
-            "sell_price": 100,
-            "sell_price_text": "$1.00",
+            "sell_listings": 111561,
+            "sell_price": 97,
+            "sell_price_text": "$0.97",
             "app_icon": "https://cdn.fastly.steamstatic.com/steamcommunity/public/images/apps/730/8dbc71957312bbd3baea65848b545be9eae2a355.jpg",
             "app_name": "Counter-Strike 2",
             "asset_description": {
@@ -148,14 +148,14 @@
                 "market_bucket_group_name": "Fracture Case",
                 "market_bucket_group_id": "G18DA243004"
             },
-            "sale_price_text": "$0.96"
+            "sale_price_text": "$0.93"
         },
         {
             "name": "Snakebite Case",
             "hash_name": "Snakebite Case",
-            "sell_listings": 48661,
-            "sell_price": 100,
-            "sell_price_text": "$1.00",
+            "sell_listings": 46034,
+            "sell_price": 99,
+            "sell_price_text": "$0.99",
             "app_icon": "https://cdn.fastly.steamstatic.com/steamcommunity/public/images/apps/730/8dbc71957312bbd3baea65848b545be9eae2a355.jpg",
             "app_name": "Counter-Strike 2",
             "asset_description": {
@@ -173,14 +173,14 @@
                 "market_bucket_group_name": "Snakebite Case",
                 "market_bucket_group_id": "G188B253004"
             },
-            "sale_price_text": "$0.96"
+            "sale_price_text": "$0.95"
         },
         {
             "name": "Gallery Case",
             "hash_name": "Gallery Case",
-            "sell_listings": 36772,
-            "sell_price": 163,
-            "sell_price_text": "$1.63",
+            "sell_listings": 38677,
+            "sell_price": 158,
+            "sell_price_text": "$1.58",
             "app_icon": "https://cdn.fastly.steamstatic.com/steamcommunity/public/images/apps/730/8dbc71957312bbd3baea65848b545be9eae2a355.jpg",
             "app_name": "Counter-Strike 2",
             "asset_description": {
@@ -198,14 +198,14 @@
                 "market_bucket_group_name": "Gallery Case",
                 "market_bucket_group_id": "G18DB363004"
             },
-            "sale_price_text": "$1.56"
+            "sale_price_text": "$1.52"
         },
         {
             "name": "Clutch Case",
             "hash_name": "Clutch Case",
-            "sell_listings": 30574,
-            "sell_price": 122,
-            "sell_price_text": "$1.22",
+            "sell_listings": 37463,
+            "sell_price": 115,
+            "sell_price_text": "$1.15",
             "app_icon": "https://cdn.fastly.steamstatic.com/steamcommunity/public/images/apps/730/8dbc71957312bbd3baea65848b545be9eae2a355.jpg",
             "app_name": "Counter-Strike 2",
             "asset_description": {
@@ -223,14 +223,14 @@
                 "market_bucket_group_name": "Clutch Case",
                 "market_bucket_group_id": "G18F7223004"
             },
-            "sale_price_text": "$1.17"
+            "sale_price_text": "$1.10"
         },
         {
             "name": "Glove Case",
             "hash_name": "Glove Case",
-            "sell_listings": 28958,
-            "sell_price": 1670,
-            "sell_price_text": "$16.70",
+            "sell_listings": 29314,
+            "sell_price": 1638,
+            "sell_price_text": "$16.38",
             "app_icon": "https://cdn.fastly.steamstatic.com/steamcommunity/public/images/apps/730/8dbc71957312bbd3baea65848b545be9eae2a355.jpg",
             "app_name": "Counter-Strike 2",
             "asset_description": {
@@ -248,39 +248,14 @@
                 "market_bucket_group_name": "Glove Case",
                 "market_bucket_group_id": "G18C0213004"
             },
-            "sale_price_text": "$15.98"
-        },
-        {
-            "name": "Gamma 2 Case",
-            "hash_name": "Gamma 2 Case",
-            "sell_listings": 23010,
-            "sell_price": 478,
-            "sell_price_text": "$4.78",
-            "app_icon": "https://cdn.fastly.steamstatic.com/steamcommunity/public/images/apps/730/8dbc71957312bbd3baea65848b545be9eae2a355.jpg",
-            "app_name": "Counter-Strike 2",
-            "asset_description": {
-                "appid": 730,
-                "classid": "1923037342",
-                "background_color": "393b3e",
-                "icon_url": "i0CoZ81Ui0m-9KwlBY1L_18myuGuq1wfhWSaZgMttyVfPaERSR0Wqmu7LAocGJKz2lu_XsnXwtmkJjSU91dh8bjz61TqQCKj0JfipHMN7aX2bfM9eaPDXT7Glbx1s7Y8HHHnw0sltWXSmYmqcH-UaAU-Sswn_16VNj0",
-                "tradable": 1,
-                "name": "Gamma 2 Case",
-                "name_color": "b0c3d9",
-                "type": "Base Grade Container",
-                "market_name": "Gamma 2 Case",
-                "market_hash_name": "Gamma 2 Case",
-                "commodity": 1,
-                "market_bucket_group_name": "Gamma 2 Case",
-                "market_bucket_group_id": "G18B9213004"
-            },
-            "sale_price_text": "$4.58"
+            "sale_price_text": "$15.67"
         },
         {
             "name": "Danger Zone Case",
             "hash_name": "Danger Zone Case",
-            "sell_listings": 21975,
-            "sell_price": 258,
-            "sell_price_text": "$2.58",
+            "sell_listings": 27700,
+            "sell_price": 248,
+            "sell_price_text": "$2.48",
             "app_icon": "https://cdn.fastly.steamstatic.com/steamcommunity/public/images/apps/730/8dbc71957312bbd3baea65848b545be9eae2a355.jpg",
             "app_name": "Counter-Strike 2",
             "asset_description": {
@@ -298,14 +273,39 @@
                 "market_bucket_group_name": "Danger Zone Case",
                 "market_bucket_group_id": "G18C4233004"
             },
-            "sale_price_text": "$2.47"
+            "sale_price_text": "$2.38"
+        },
+        {
+            "name": "Gamma 2 Case",
+            "hash_name": "Gamma 2 Case",
+            "sell_listings": 25678,
+            "sell_price": 490,
+            "sell_price_text": "$4.90",
+            "app_icon": "https://cdn.fastly.steamstatic.com/steamcommunity/public/images/apps/730/8dbc71957312bbd3baea65848b545be9eae2a355.jpg",
+            "app_name": "Counter-Strike 2",
+            "asset_description": {
+                "appid": 730,
+                "classid": "1923037342",
+                "background_color": "393b3e",
+                "icon_url": "i0CoZ81Ui0m-9KwlBY1L_18myuGuq1wfhWSaZgMttyVfPaERSR0Wqmu7LAocGJKz2lu_XsnXwtmkJjSU91dh8bjz61TqQCKj0JfipHMN7aX2bfM9eaPDXT7Glbx1s7Y8HHHnw0sltWXSmYmqcH-UaAU-Sswn_16VNj0",
+                "tradable": 1,
+                "name": "Gamma 2 Case",
+                "name_color": "b0c3d9",
+                "type": "Base Grade Container",
+                "market_name": "Gamma 2 Case",
+                "market_hash_name": "Gamma 2 Case",
+                "commodity": 1,
+                "market_bucket_group_name": "Gamma 2 Case",
+                "market_bucket_group_id": "G18B9213004"
+            },
+            "sale_price_text": "$4.69"
         },
         {
             "name": "Prisma 2 Case",
             "hash_name": "Prisma 2 Case",
-            "sell_listings": 20941,
-            "sell_price": 265,
-            "sell_price_text": "$2.65",
+            "sell_listings": 23573,
+            "sell_price": 257,
+            "sell_price_text": "$2.57",
             "app_icon": "https://cdn.fastly.steamstatic.com/steamcommunity/public/images/apps/730/8dbc71957312bbd3baea65848b545be9eae2a355.jpg",
             "app_name": "Counter-Strike 2",
             "asset_description": {
@@ -323,39 +323,14 @@
                 "market_bucket_group_name": "Prisma 2 Case",
                 "market_bucket_group_id": "G18D7243004"
             },
-            "sale_price_text": "$2.54"
-        },
-        {
-            "name": "Gamma Case",
-            "hash_name": "Gamma Case",
-            "sell_listings": 19417,
-            "sell_price": 476,
-            "sell_price_text": "$4.76",
-            "app_icon": "https://cdn.fastly.steamstatic.com/steamcommunity/public/images/apps/730/8dbc71957312bbd3baea65848b545be9eae2a355.jpg",
-            "app_name": "Counter-Strike 2",
-            "asset_description": {
-                "appid": 730,
-                "classid": "1797256701",
-                "background_color": "393b3e",
-                "icon_url": "i0CoZ81Ui0m-9KwlBY1L_18myuGuq1wfhWSaZgMttyVfPaERSR0Wqmu7LAocGJKz2lu_XsnXwtmkJjSU91dh8bj35VTqVBP4io_frHEVtvP5bPZrd6XECmOSxe0v4bRoTnnjwBkitWrRm4yoeX3GagMnCZZ2FPlK7EcEv22BnQ",
-                "tradable": 1,
-                "name": "Gamma Case",
-                "name_color": "b0c3d9",
-                "type": "Base Grade Container",
-                "market_name": "Gamma Case",
-                "market_hash_name": "Gamma Case",
-                "commodity": 1,
-                "market_bucket_group_name": "Gamma Case",
-                "market_bucket_group_id": "G188C213004"
-            },
-            "sale_price_text": "$4.56"
+            "sale_price_text": "$2.46"
         },
         {
             "name": "Spectrum 2 Case",
             "hash_name": "Spectrum 2 Case",
-            "sell_listings": 14883,
-            "sell_price": 517,
-            "sell_price_text": "$5.17",
+            "sell_listings": 20545,
+            "sell_price": 499,
+            "sell_price_text": "$4.99",
             "app_icon": "https://cdn.fastly.steamstatic.com/steamcommunity/public/images/apps/730/8dbc71957312bbd3baea65848b545be9eae2a355.jpg",
             "app_name": "Counter-Strike 2",
             "asset_description": {
@@ -373,7 +348,32 @@
                 "market_bucket_group_name": "Spectrum 2 Case",
                 "market_bucket_group_id": "G18B3223004"
             },
-            "sale_price_text": "$4.95"
+            "sale_price_text": "$4.78"
+        },
+        {
+            "name": "Gamma Case",
+            "hash_name": "Gamma Case",
+            "sell_listings": 20302,
+            "sell_price": 511,
+            "sell_price_text": "$5.11",
+            "app_icon": "https://cdn.fastly.steamstatic.com/steamcommunity/public/images/apps/730/8dbc71957312bbd3baea65848b545be9eae2a355.jpg",
+            "app_name": "Counter-Strike 2",
+            "asset_description": {
+                "appid": 730,
+                "classid": "1797256701",
+                "background_color": "393b3e",
+                "icon_url": "i0CoZ81Ui0m-9KwlBY1L_18myuGuq1wfhWSaZgMttyVfPaERSR0Wqmu7LAocGJKz2lu_XsnXwtmkJjSU91dh8bj35VTqVBP4io_frHEVtvP5bPZrd6XECmOSxe0v4bRoTnnjwBkitWrRm4yoeX3GagMnCZZ2FPlK7EcEv22BnQ",
+                "tradable": 1,
+                "name": "Gamma Case",
+                "name_color": "b0c3d9",
+                "type": "Base Grade Container",
+                "market_name": "Gamma Case",
+                "market_hash_name": "Gamma Case",
+                "commodity": 1,
+                "market_bucket_group_name": "Gamma Case",
+                "market_bucket_group_id": "G188C213004"
+            },
+            "sale_price_text": "$4.89"
         }
     ],
     "history": {
@@ -540,5 +540,5 @@
             "sell_listings": 14407
         }
     },
-    "last_updated": "2026-05-11T23:00:59.433760"
+    "last_updated": "2026-05-17T12:19:30.547196"
 }

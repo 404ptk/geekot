@@ -1,8 +1,60 @@
 import discord
+import json
+import os
+from datetime import datetime
 
 GUILD_ID = 551503797067710504
 ARCHIVE_CATEGORY_ID = 1360605748186452110
 OWNER_ID = 443406275716579348  # Twój discord user ID
+CHANNEL_PRIVACY_FILE = "txt/channel_privacy_settings.json"
+
+
+def load_channel_privacy():
+    """Ładuje ustawienia prywatności kanałów"""
+    try:
+        if os.path.exists(CHANNEL_PRIVACY_FILE):
+            with open(CHANNEL_PRIVACY_FILE, 'r', encoding='utf-8') as f:
+                return json.load(f)
+    except Exception as e:
+        print(f"Błąd przy ładowaniu ustawień prywatności kanałów: {e}")
+    return {}
+
+
+def save_channel_privacy(privacy_data):
+    """Zapisuje ustawienia prywatności kanałów"""
+    try:
+        os.makedirs(os.path.dirname(CHANNEL_PRIVACY_FILE) or '.', exist_ok=True)
+        with open(CHANNEL_PRIVACY_FILE, 'w', encoding='utf-8') as f:
+            json.dump(privacy_data, f, indent=4, ensure_ascii=False)
+    except Exception as e:
+        print(f"Błąd przy zapisywaniu ustawień prywatności kanałów: {e}")
+
+
+def extract_channel_privacy(channel: discord.TextChannel) -> dict:
+    """Ekstrahuje ustawienia prywatności z kanału"""
+    privacy_settings = {
+        "channel_id": channel.id,
+        "channel_name": channel.name,
+        "saved_at": datetime.now().isoformat(),
+        "permissions_overwrites": {},
+        "topic": channel.topic,
+        "slowmode_delay": channel.slowmode_delay,
+        "nsfw": channel.nsfw,
+    }
+    
+    # Zapisz wszystkie permission overwrites
+    for target, permissions in channel.overwrites.items():
+        target_type = "role" if isinstance(target, discord.Role) else "member"
+        target_name = target.name if hasattr(target, "name") else str(target.id)
+        
+        privacy_settings["permissions_overwrites"][str(target.id)] = {
+            "type": target_type,
+            "name": target_name,
+            "allow": permissions.pair()[0].value,
+            "deny": permissions.pair()[1].value,
+        }
+    
+    return privacy_settings
 
 async def setup_mod_commands(client: discord.Client, tree: discord.app_commands.CommandTree, guild_id: int = None):
     guild = discord.Object(id=guild_id) if guild_id else discord.Object(id=GUILD_ID)
@@ -37,10 +89,16 @@ async def setup_mod_commands(client: discord.Client, tree: discord.app_commands.
             )
             return
 
+        # Zapisz ustawienia prywatności kanału
+        privacy_data = load_channel_privacy()
+        channel_settings = extract_channel_privacy(channel)
+        privacy_data[str(channel.id)] = channel_settings
+        save_channel_privacy(privacy_data)
+
         await channel.edit(category=category)
         await channel.set_permissions(interaction.guild.default_role, send_messages=False)
         await interaction.response.send_message(
-            f"Kanał {channel.mention} został przeniesiony do kategorii **{category.name}** i zablokowano możliwość pisania."
+            f"Kanał {channel.mention} został przeniesiony do kategorii **{category.name}** i zablokowano możliwość pisania.\n✅ Ustawienia prywatności kanału zostały zapisane."
         )
 
     # --- Synchronizacja globalna ---
