@@ -171,17 +171,6 @@ def build_discordfaceit_live_embed(guild):
             f"**{index}.** {level_badge} `{player['nickname']:<{max_nickname_len}} | {player['elo']:>{max_elo_len}} ELO | {daily_elo_change:>{max_daily_len}} | {player['last_matches']}`"
         )
 
-    # Dodaj sekcję "Aktualnie w meczu" ze zielonymi emoji
-    players_in_match = get_players_in_match()
-    if players_in_match:
-        lines.append("")
-        lines.append("**Aktualnie w meczu:**")
-        for player in players_in_match:
-            nickname = player['nickname']
-            match_id = player['match_id']
-            lobby_link = f"https://www.faceit.com/en/cs2/room/{match_id}/scoreboard"
-            lines.append(f"🟢 {nickname} [[Lobby]]({lobby_link})")
-
     faceit_logo = get_guild_emoji_text(guild, "faceitlogo")
     title_prefix = f"{faceit_logo} " if faceit_logo else ""
 
@@ -316,52 +305,6 @@ def get_faceit_match_roster(match_id):
             elo = p_data.get('games', {}).get('cs2', {}).get('faceit_elo', '')
             roster[nick]["elo"] = str(elo)
     return roster
-
-def get_match_status(match_id):
-    """Pobiera status meczu: 'ONGOING', 'FINISHED' lub None"""
-    url = f"https://open.faceit.com/data/v4/matches/{match_id}"
-    headers = {"Authorization": f"Bearer {FACEIT_API_KEY}"}
-    try:
-        response = requests.get(url, headers=headers, timeout=5)
-        if response.status_code != 200:
-            return None
-        data = response.json()
-        return data.get("status")  # 'ONGOING' lub 'FINISHED'
-    except Exception:
-        return None
-
-def get_players_in_match():
-    """Zwraca listę graczy z player_nicknames którzy są aktualnie w meczu (status ONGOING).
-    Zwraca listę dict z 'nickname' i 'match_id' dla każdego gracza."""
-    players_in_match = []
-    
-    for nickname in player_nicknames:
-        player_data = get_faceit_player_data(nickname)
-        if not player_data:
-            continue
-        
-        player_id = player_data.get('player_id')
-        if not player_id:
-            continue
-        
-        # Pobierz ostatni mecz
-        matches = get_faceit_player_matches(player_id, limit=1)
-        if not matches:
-            continue
-        
-        # Sprawdź status ostatniego meczu
-        match_id = matches[0].get('match_id')
-        if not match_id:
-            continue
-        
-        status = get_match_status(match_id)
-        if status == 'ONGOING':
-            players_in_match.append({
-                'nickname': nickname,
-                'match_id': match_id
-            })
-    
-    return players_in_match
 
 async def get_discordfaceit_stats():
     player_stats = []
