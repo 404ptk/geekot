@@ -77,12 +77,12 @@ def get_faceit_level_badge(guild, level):
         if emoji_text:
             return emoji_text
         return f"LVL {level}"
-    return "LVL ?"
+    return "❓"
 
 
 def format_faceit_form(outcomes):
     if not outcomes:
-        return "?"
+        return "❓"
 
     emoji_map = {
         "W": "🟢",
