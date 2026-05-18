@@ -6,8 +6,6 @@ from discord.ext import tasks
 from datetime import datetime, timedelta
 import asyncio
 import os
-import io
-from PIL import Image, ImageDraw, ImageFont
 from startup_logger import record_startup_step
 
 GUILD_ID = 551503797067710504
@@ -305,197 +303,6 @@ def get_faceit_match_roster(match_id):
             elo = p_data.get('games', {}).get('cs2', {}).get('faceit_elo', '')
             roster[nick]["elo"] = str(elo)
     return roster
-
-async def get_discordfaceit_stats():
-    player_stats = []
-    # Load daily stats for comparison
-    daily_data = load_daily_stats()
-    current_date = datetime.now().strftime("%Y-%m-%d")
-    is_same_day = daily_data.get("date") == current_date
-    daily_start_map = daily_data.get("stats", {}) if is_same_day else {}
-
-    previous_stats = load_faceit_ranking()
-    previous_positions = {player['nickname']: i for i, player in enumerate(previous_stats)}
-    previous_elo_map = {player['nickname']: player['elo'] for player in previous_stats}
-
-    for nickname in player_nicknames:
-        player_data = get_faceit_player_data(nickname)
-        if player_data:
-            player_level = player_data.get('games', {}).get('cs2', {}).get('skill_level', 0)
-            player_elo = player_data.get('games', {}).get('cs2', {}).get('faceit_elo', 0)
-            pid = player_data.get('player_id')
-
-            # Fetch last 5 matches
-            last_matches_str = "N/A"
-            streak_emoji = ""
-            if pid:
-                matches = get_faceit_player_matches(pid, limit=5)
-                if matches:
-                    outcomes = []
-                    for m in matches:
-                        res = m.get('stats', {}).get('Result')
-                        if res == '1': outcomes.append('W')
-                        elif res == '0': outcomes.append('L')
-                        else: outcomes.append('?')
-                    last_matches_str = '/'.join(outcomes)
-                    
-                    if len(outcomes) >= 3:
-                        if outcomes[:3] == ['W', 'W', 'W']:
-                            streak_emoji = " 🔥"
-                        elif outcomes[:3] == ['L', 'L', 'L']:
-                            streak_emoji = " 😭"
-
-            # ELO Diff logic
-            elo_diff = 0
-            if nickname in previous_elo_map:
-                elo_diff = player_elo - previous_elo_map[nickname]
-            
-            elo_change_str = f" ({'+' if elo_diff > 0 else ''}{elo_diff})" if elo_diff != 0 else ""
-            elo_full_str = f"ELO: {player_elo}{elo_change_str}"
-
-            player_stats.append({
-                'nickname': nickname,
-                'level': player_level if isinstance(player_level, int) else 0,
-                'elo': player_elo if isinstance(player_elo, int) else 0,
-                'elo_full_str': elo_full_str,
-                'last_matches': last_matches_str,
-                'streak_emoji': streak_emoji
-            })
-
-    player_stats.sort(key=lambda x: (x['elo'], x['level']), reverse=True)
-    
-    # Calculate Max Length for Alignment
-    max_elo_len = 0
-    for p in player_stats:
-        if len(p['elo_full_str']) > max_elo_len:
-            max_elo_len = len(p['elo_full_str'])
-
-    embed = discord.Embed(
-        title="📊 **Ranking Faceit**",
-        description="🔹 Lista graczy uszeregowana według ELO Faceit.",
-        color=discord.Color.orange()
-    )
-    for index, player in enumerate(player_stats):
-        rank_emoji = "🥇" if index == 0 else "🥈" if index == 1 else "🥉" if index == 2 else ""
-        flag = "🇺🇦" if player['nickname'] == "PhesterM9" else "🇵🇱"
-        
-        position_change = ""
-        if player['nickname'] in previous_positions:
-            prev_pos = previous_positions[player['nickname']]
-            if prev_pos > index:
-                position_change = "\t⬆️"
-            elif prev_pos < index:
-                position_change = "\t⬇️"
-            else:
-                position_change = "\t➖"
-        
-        # Obliczanie dobowej różnicy
-        daily_diff_str = ""
-        if is_same_day:
-            start_elo = daily_start_map.get(player['nickname'])
-            # Jeśli nie ma start_elo (np. ktoś dodany w trakcie dnia), to pomiń
-            if start_elo is not None:
-                d_diff = player['elo'] - start_elo
-                if d_diff != 0:
-                    daily_diff_str = f" ``Dobowy: {'+' if d_diff > 0 else ''}{d_diff}``"
-
-        padded_elo = player['elo_full_str'].ljust(max_elo_len)
-        value_str = f"```\n{padded_elo} | LVL: {player['level']} | {player['last_matches']}{player['streak_emoji']}\n```" + daily_diff_str
-
-        embed.add_field(
-            name=f"{rank_emoji} **{player['nickname']}** {flag} {position_change}",
-            value=value_str,
-            inline=False
-        )
-    embed.set_footer(text="📅 Ranking generowany automatycznie | Zmiany względem poprzedniego wywołania")
-    
-    # Save minimal stats for next comparison
-    save_list = [{'nickname': p['nickname'], 'level': p['level'], 'elo': p['elo']} for p in player_stats]
-    save_faceit_ranking(save_list)
-    return embed
-
-async def generate_df_image():
-    """Generuje ranking w formie obrazka /df z podanych ramek."""
-    base_dir = os.path.dirname(__file__)
-    bg_path = os.path.join(base_dir, "images", "ranking", "faceitranking.png")
-    
-    if not os.path.exists(bg_path):
-        return None
-        
-    img = Image.open(bg_path).copy()
-    draw = ImageDraw.Draw(img)
-    
-    font_path = os.path.join(base_dir, "images", "font", "roboto", "Roboto-Medium.ttf")
-    try:
-        font_name = ImageFont.truetype(font_path, 32)
-        font_stat = ImageFont.truetype(font_path, 22)
-    except:
-        font_name = ImageFont.load_default()
-        font_stat = ImageFont.load_default()
-
-    # Get data
-    player_stats = []
-    for nickname in player_nicknames:
-        player_data = get_faceit_player_data(nickname)
-        if player_data:
-            player_level = player_data.get('games', {}).get('cs2', {}).get('skill_level', 0)
-            player_elo = player_data.get('games', {}).get('cs2', {}).get('faceit_elo', 0)
-            player_stats.append({
-                'nickname': nickname,
-                'level': player_level if isinstance(player_level, int) else 0,
-                'elo': player_elo if isinstance(player_elo, int) else 0,
-            })
-    player_stats.sort(key=lambda x: (x['elo'], x['level']), reverse=True)
-
-    gaps = [89, 89, 85, 71, 66, 67, 67, 63, 63]
-    h = 269 - 214 # 55
-
-    for i, player in enumerate(player_stats):
-        if i >= 10: break
-        
-        offset = sum(gaps[:i]) + i * h
-        
-        # Name
-        b_top = 214 + offset
-        b_bot = 269 + offset
-        
-        # ELO
-        e_top = 206 + offset
-        e_bot = 239 + offset
-        
-        # LVL
-        l_top = 252 + offset
-        l_bot = 285 + offset
-        
-        # Draw Name
-        name_text = player['nickname']
-        bbox = draw.textbbox((0, 0), name_text, font=font_name)
-        th = bbox[3] - bbox[1]
-        y_name = b_top + (b_bot - b_top - th) // 2
-        draw.text((286 + 10, y_name), name_text, fill="white", font=font_name)
-        
-        # Draw ELO
-        elo_text = str(player['elo'])
-        bbox = draw.textbbox((0, 0), elo_text, font=font_stat)
-        tw = bbox[2] - bbox[0]
-        th = bbox[3] - bbox[1]
-        x_elo = 737 + (816 - 737 - tw) // 2
-        y_elo = e_top + (e_bot - e_top - th) // 2
-        draw.text((x_elo, y_elo), elo_text, fill="white", font=font_stat)
-        
-        # Draw LVL
-        lvl_text = str(player['level'])
-        bbox = draw.textbbox((0, 0), lvl_text, font=font_stat)
-        tw = bbox[2] - bbox[0]
-        th = bbox[3] - bbox[1]
-        x_lvl = 737 + (816 - 737 - tw) // 2
-        y_lvl = l_top + (l_bot - l_top - th) // 2
-        draw.text((x_lvl, y_lvl), lvl_text, fill="white", font=font_stat)
-
-    buffer = io.BytesIO()
-    img.save(buffer, format="PNG")
-    buffer.seek(0)
-    return discord.File(fp=buffer, filename="df_ranking.png")
 
 def reset_faceit_ranking():
     if os.path.exists(FACEIT_RANKING_FILE):
@@ -1091,28 +898,12 @@ async def setup_faceit_commands(client: discord.Client, tree: app_commands.Comma
         faceit_nick_autocomplete=faceit_nick_autocomplete,
     )
 
-    @tree.command(
-        name="discordfaceit",
-        description="Wyświetla ranking Faceit graczy z discorda",
-        guild=guild
-    )
-    async def discordfaceit(interaction: discord.Interaction):
-        await interaction.response.defer()
-        embed = await get_discordfaceit_stats()
-        await interaction.followup.send(embed=embed)
+    from faceit.discordfaceit import register_discordfaceit_command
 
-    @tree.command(
-        name="df",
-        description="Wyświetla ranking Faceit graczy z discorda w formie graficznej",
-        guild=guild
+    register_discordfaceit_command(
+        tree=tree,
+        guild=guild,
     )
-    async def df(interaction: discord.Interaction):
-        await interaction.response.defer()
-        image_file = await generate_df_image()
-        if image_file:
-            await interaction.followup.send(file=image_file)
-        else:
-            await interaction.followup.send("❌ Nie można wygenerować obrazka (brak pliku tła).")
 
     @tree.command(
         name="resetfaceitranking",
