@@ -1,6 +1,7 @@
 import discord
 from discord import app_commands
 import requests
+from faceit.common import get_faceit_level_badge, get_guild_emoji_text
 
 
 async def get_last_match_stats(nickname, guild=None):
@@ -113,7 +114,7 @@ async def get_last_match_stats(nickname, guild=None):
     if team_rating_str:
         desc += f"\n{team_rating_str}"
 
-    faceit_logo = fu.get_guild_emoji_text(guild, "faceitlogo")
+    faceit_logo = get_guild_emoji_text(guild, "faceitlogo")
     title_prefix = f"{faceit_logo} " if faceit_logo else ""
 
     embed = discord.Embed(
@@ -154,7 +155,7 @@ async def get_last_match_stats(nickname, guild=None):
             kd_ratio = kills / deaths if deaths > 0 else float(kills)
 
             p_level = roster.get(player["nickname"], {}).get("level", 0)
-            level_badge = fu.get_faceit_level_badge(guild, p_level)
+            level_badge = get_faceit_level_badge(guild, p_level)
 
             players.append(
                 {

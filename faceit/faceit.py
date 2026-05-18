@@ -1,5 +1,6 @@
 import discord
 from discord import app_commands
+from faceit.common import get_guild_emoji_text
 
 
 def register_faceit_command(tree, guild, faceit_nick_autocomplete):
@@ -34,10 +35,10 @@ def register_faceit_command(tree, guild, faceit_nick_autocomplete):
         player_level_emoji = str(player_level)
         if str(player_level).isdigit() and interaction.guild:
             emoji_name = f"faceit{player_level}"
-            emoji_text = fu.get_guild_emoji_text(interaction.guild, emoji_name)
+            emoji_text = get_guild_emoji_text(interaction.guild, emoji_name)
             player_level_emoji = emoji_text if emoji_text else f":{emoji_name}:"
 
-        faceit_logo = fu.get_guild_emoji_text(interaction.guild, "faceitlogo")
+        faceit_logo = get_guild_emoji_text(interaction.guild, "faceitlogo")
         title_prefix = f"{faceit_logo} " if faceit_logo else ""
 
         daily_elo_change = ""
