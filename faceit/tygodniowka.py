@@ -227,3 +227,57 @@ async def generate_weekly_summary(client, channel_id=None):
         "📅 **Podsumowanie Tygodnia Faceit**",
         f"Statystyki za okres: {start_dt.strftime('%Y-%m-%d')} - {end_dt.strftime('%Y-%m-%d')}",
     )
+
+
+async def run_weekly_summary_if_due(client, today=None):
+    import faceit_utils as fu
+
+    now = today or datetime.now()
+    today_str = now.strftime("%Y-%m-%d")
+
+    weekly_stats = load_weekly_stats()
+    last_run_date = weekly_stats.get("last_run_date")
+
+    if now.weekday() != 0 or last_run_date == today_str:
+        return
+
+    target_channel_id = 1301248598108798996
+    channel = client.get_channel(target_channel_id)
+    if not channel:
+        return
+
+    last_snapshot_date_str = weekly_stats.get("date")
+    try:
+        start_dt = datetime.strptime(last_snapshot_date_str, "%Y-%m-%d") if last_snapshot_date_str else (now - timedelta(days=7))
+    except ValueError:
+        start_dt = now - timedelta(days=7)
+
+    start_ts = start_dt.timestamp()
+    end_ts = now.timestamp()
+    snapshot_elos = weekly_stats.get("stats", {})
+
+    embed = create_weekly_stats_embed(
+        start_ts,
+        end_ts,
+        snapshot_elos,
+        "📅 **Podsumowanie Tygodnia Faceit**",
+        f"Statystyki za okres: {start_dt.strftime('%d-%m-%Y')} - {today_str}",
+    )
+
+    if not embed:
+        return
+
+    await channel.send(embed=embed)
+
+    new_snapshot = {}
+    for nick in fu.player_nicknames:
+        p_data = fu.get_faceit_player_data(nick)
+        if p_data:
+            elo = p_data.get("games", {}).get("cs2", {}).get("faceit_elo")
+            if isinstance(elo, int):
+                new_snapshot[nick] = elo
+
+    weekly_stats["stats"] = new_snapshot
+    weekly_stats["date"] = today_str
+    weekly_stats["last_run_date"] = today_str
+    save_weekly_stats(weekly_stats)
