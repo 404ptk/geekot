@@ -305,8 +305,7 @@ def create_weekly_stats_embed(start_ts, end_ts, snapshot_elos, title, descriptio
 
         canonical_map = {n.lower(): n for n in fu.player_nicknames}
 
-        # Only calculate premade if player has >= 3 matches to avoid wasting API calls
-        if total >= 3:
+        if total >= 1:
             matches_to_check = player.get('matches', [])[:15]
             for m in matches_to_check:
                 match_id = _get_match_id(m)
@@ -319,7 +318,6 @@ def create_weekly_stats_embed(start_ts, end_ts, snapshot_elos, title, descriptio
                 if not details:
                     continue
 
-                # find the team that contains our player
                 our_team_players = []
                 for team in details.get('teams', {}).values():
                     for pl in team.get('players', []):
@@ -333,7 +331,6 @@ def create_weekly_stats_embed(start_ts, end_ts, snapshot_elos, title, descriptio
                 if not our_team_players:
                     continue
 
-                # check for premade partners (other players from our tracked list)
                 partners = []
                 for p in our_team_players:
                     plow = (p or '').lower()
@@ -350,9 +347,7 @@ def create_weekly_stats_embed(start_ts, end_ts, snapshot_elos, title, descriptio
 
         premade_percent = (premade_count / total * 100) if total > 0 else 0
 
-        # build premade string with top 2 partners only
         partner_parts = []
-        # order partners by count desc, take only top 2
         for partner, cnt in sorted(per_partner.items(), key=lambda x: x[1], reverse=True)[:2]:
             wins_with_partner = per_partner_wins.get(partner, 0)
             wr_with_partner = (wins_with_partner / cnt * 100) if cnt > 0 else 0
@@ -363,7 +358,6 @@ def create_weekly_stats_embed(start_ts, end_ts, snapshot_elos, title, descriptio
         else:
             premade_line = f"PremQue: {premade_percent:.0f}% |"
 
-        # --- Level change indicator from ELO ranges ---
         level_change_str = ""
         start_level = elo_to_faceit_level(player.get("start_elo"))
         current_level = elo_to_faceit_level(player.get("current_elo"))
@@ -372,12 +366,10 @@ def create_weekly_stats_embed(start_ts, end_ts, snapshot_elos, title, descriptio
             current_badge = get_faceit_level_badge(guild, current_level)
             level_change_str = f" {start_badge} -> {current_badge}"
 
-        # Build the four base display lines
         line1 = f"ELO: {player['elo_str']} | Gier: {metrics['count']} | W: {metrics['wins']} L: {metrics['losses']}"
         line2 = f"Śr. K/D: {metrics['kd']:.2f} | Śr. kille: {metrics['avg_kills']:.1f} | Śr. ADR: {metrics['avg_adr']:.1f}"
         line3 = f"Clutche: {metrics.get('clutch_wr', 0):.0f}% ({metrics.get('clutch_count', 0)}) | Entry: {metrics.get('entry_wr', 0):.0f}% ({metrics.get('entry_count', 0)})"
 
-        # Compute max length across line1, line2, line3 AND premade_line
         all_lines_to_measure = [line1, line2, line3, premade_line]
         computed_max = max((len(ln) for ln in all_lines_to_measure), default=0)
         MAX_LINE_LEN = 100
@@ -391,13 +383,11 @@ def create_weekly_stats_embed(start_ts, end_ts, snapshot_elos, title, descriptio
         def _pad_trail(s):
             return s + ' ' * (global_max - len(s))
 
-        # Truncate and pad all lines
         line1 = _pad_trail(_truncate(line1))
         line2 = _pad_trail(_truncate(line2))
         line3 = _pad_trail(_truncate(line3))
         premade_line = _pad_trail(_truncate(premade_line))
 
-        # Build value: line1, line2, line3, premade line
         value = (
             f"`{line1}`"
             f"\n`{line2}`"
@@ -411,8 +401,6 @@ def create_weekly_stats_embed(start_ts, end_ts, snapshot_elos, title, descriptio
     active_players = [player for player in player_stats_list if player["metrics"]]
 
     if active_players:
-        embed.add_field(name="", value="--------------------------------", inline=False)
-
         goat = max(active_players, key=lambda p: p["metrics"]["kd"] * 100 + p["metrics"]["avg_adr"])
         embed.add_field(
             name="🐐 GOAT tygodnia",
@@ -426,6 +414,8 @@ def create_weekly_stats_embed(start_ts, end_ts, snapshot_elos, title, descriptio
             value=f"{troll['nick']} | K/D: {troll['metrics']['kd']:.2f} | ADR: {troll['metrics']['avg_adr']:.1f}",
             inline=True,
         )
+
+        embed.add_field(name="", value="", inline=False)
 
         bezrobotny = max(active_players, key=lambda p: p["metrics"]["count"])
         embed.add_field(
@@ -442,6 +432,10 @@ def create_weekly_stats_embed(start_ts, end_ts, snapshot_elos, title, descriptio
                 value=f"{syzyf['nick']} | {syzyf['elo_diff']}",
                 inline=True,
             )
+        else:
+            embed.add_field(name="", value="", inline=True)
+
+        embed.add_field(name="", value="", inline=False)
 
         best_adr = max(active_players, key=lambda p: p["metrics"]["avg_adr"])
         embed.add_field(
@@ -456,6 +450,26 @@ def create_weekly_stats_embed(start_ts, end_ts, snapshot_elos, title, descriptio
             value=f"{most_kills_avg['nick']} | {most_kills_avg['metrics']['avg_kills']:.1f}",
             inline=True,
         )
+
+        embed.add_field(name="", value="", inline=False)
+
+        entry_fragging_players = [p for p in active_players if p["metrics"]["entry_count"] > 0]
+        if entry_fragging_players:
+            entry_fragger = max(entry_fragging_players, key=lambda p: p["metrics"]["entry_wr"] * p["metrics"]["entry_count"])
+            embed.add_field(
+                name="📍 Entry Fragger",
+                value=f"{entry_fragger['nick']} | {entry_fragger['metrics']['entry_wr']:.0f}% ({entry_fragger['metrics']['entry_count']})",
+                inline=True,
+            )
+
+        clutching_players = [p for p in active_players if p["metrics"]["clutch_count"] > 0]
+        if clutching_players:
+            clutcher = max(clutching_players, key=lambda p: p["metrics"]["clutch_wr"] * p["metrics"]["clutch_count"])
+            embed.add_field(
+                name="🔥 Clutcher",
+                value=f"{clutcher['nick']} | {clutcher['metrics']['clutch_wr']:.0f}% ({clutcher['metrics']['clutch_count']})",
+                inline=True,
+            )
 
     return embed
 
