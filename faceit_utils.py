@@ -37,6 +37,7 @@ player_nicknames = ['utopiasz', 'radzioswir', 'PhesterM9', '-Masny-', '-mateuko'
 
 FACEIT_RANKING_FILE = "txt/faceit_ranking.txt"
 FACEIT_DAILY_STATS_FILE = "txt/faceit_daily_stats.json"
+FACEIT_MATCHES_STATS_FILE = "txt/faceit_matches_stats.json"
 CLIENT_REF = None  # Reference to the Discord client for background tasks
 
 
@@ -71,10 +72,49 @@ def load_faceit_ranking():
     except (FileNotFoundError, json.JSONDecodeError):
         return []
 
+def load_match_cache():
+    """Load all cached match details."""
+    if os.path.exists(FACEIT_MATCHES_STATS_FILE):
+        try:
+            with open(FACEIT_MATCHES_STATS_FILE, "r") as f:
+                return json.load(f)
+        except Exception:
+            pass
+    return {}
+
+def save_match_cache(cache_dict):
+    """Save match cache to file."""
+    try:
+        with open(FACEIT_MATCHES_STATS_FILE, "w") as f:
+            json.dump(cache_dict, f, indent=2)
+    except Exception:
+        pass
+
+def _get_match_from_cache(match_id):
+    """Check if match details exist in cache."""
+    cache = load_match_cache()
+    return cache.get(match_id)
+
+def _save_match_to_cache(match_id, match_data):
+    """Save match details to cache."""
+    cache = load_match_cache()
+    cache[match_id] = match_data
+    save_match_cache(cache)
+
 def get_faceit_match_details(match_id):
+    # Check cache first
+    cached = _get_match_from_cache(match_id)
+    if cached:
+        return cached
+    
     url = f"https://open.faceit.com/data/v4/matches/{match_id}/stats"
     headers = {"Authorization": f"Bearer {FACEIT_API_KEY}"}
-    response = requests.get(url, headers=headers)
+    try:
+        response = requests.get(url, headers=headers, timeout=5)
+    except requests.exceptions.Timeout:
+        return None
+    except requests.exceptions.RequestException:
+        return None
     if response.status_code != 200:
         return None
     match_data = response.json()
@@ -131,11 +171,14 @@ def get_faceit_match_details(match_id):
                     score = f"{s1}:{s2}"
     except Exception:
         pass
-    return {
+    result = {
         "map": match_data["rounds"][0]["round_stats"]["Map"],
         "teams": teams,
         "score": score,
     }
+    # Save to cache
+    _save_match_to_cache(match_id, result)
+    return result
 
 def get_faceit_match_roster(match_id):
     """Fetches match roster with level for all players (1 API call).

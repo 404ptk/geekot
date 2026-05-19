@@ -541,6 +541,25 @@ async def on_message(message):
 
         await message.channel.send(embed=embed)
 
+    if message.content.startswith('!tygtest'):
+        if message.author.id != 443406275716579348:
+            await message.channel.send("❌ Nie masz uprawnień do tej komendy.", delete_after=5)
+            return
+
+        try:
+            from faceit.tygodniowka import generate_weekly_summary
+
+            embed = await generate_weekly_summary(client, guild=message.guild)
+            if embed:
+                try:
+                    await message.channel.send(file=discord.File('images/ranking/tygodniowka.png'), embed=embed)
+                except Exception:
+                    await message.channel.send(embed=embed)
+            else:
+                await message.channel.send("Brak zapisanych danych tygodniowych.", delete_after=10)
+        except Exception as e:
+            await message.channel.send(f"❌ Błąd podczas generowania tygodniówki: {e}")
+
 
 
 # Uruchomienie bota
