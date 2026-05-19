@@ -72,9 +72,13 @@ def register_faceit_command(tree, guild, faceit_nick_autocomplete):
         total_utility_dmg = 0
         match_count = len(matches)
 
-        match_summary = "```"
-        match_summary += f"{'🗺 Mapa'.ljust(10)} {'📊 Wynik'.ljust(8)} {'🔪 K/D/A'.ljust(8)} {'🎯 HS'.ljust(5)} {'ADR'}\n"
-        match_summary += "-" * 43 + "\n"
+        table_rows = []
+        w_map = len("Mapa")
+        w_result = len("Wynik")
+        w_kd = len("KD")
+        w_kda = len("K/D/A")
+        w_hs = len("HS")
+        w_adr = len("ADR")
 
         for match in matches:
             map_name = match.get("stats", {}).get("Map", "Nieznana").replace("de_", "")
@@ -85,6 +89,9 @@ def register_faceit_command(tree, guild, faceit_nick_autocomplete):
             assists = int(match.get("stats", {}).get("Assists", 0))
             hs = int(match.get("stats", {}).get("Headshots %", 0))
             adr = float(match.get("stats", {}).get("ADR", 0))
+
+            kd_ratio = kills / deaths if deaths > 0 else float(kills)
+            kda_ratio = f"{kills}/{deaths}/{assists}"
 
             total_kills += kills
             total_deaths += deaths
@@ -116,7 +123,86 @@ def register_faceit_command(tree, guild, faceit_nick_autocomplete):
                                 total_utility_dmg += utility_dmg
                                 break
 
-            match_summary += f"{map_name.ljust(15)} {result_display.ljust(5)} {f'{kills}/{deaths}/{assists}'.ljust(9)} {f'{hs}%'.ljust(5)} {adr:.0f}\n"
+            w_map = max(w_map, len(map_name))
+            w_result = max(w_result, len(result_display))
+            w_kd = max(w_kd, len(f"{kd_ratio:.2f}"))
+            w_kda = max(w_kda, len(kda_ratio))
+            w_hs = max(w_hs, len(f"{hs}%"))
+            w_adr = max(w_adr, len(f"{adr:.0f}"))
+
+            table_rows.append((map_name, result_display, kd_ratio, kda_ratio, hs, adr))
+
+        result_start = w_map + 1
+        kd_start = result_start + w_result + 1
+        kda_start = kd_start + w_kd + 1
+        hs_start = kda_start + w_kda + 1
+        adr_start = hs_start + w_hs + 2
+        total_width = adr_start + w_adr
+        header_result_start = result_start
+        header_kd_start = kd_start + 2
+        header_kda_start = kda_start + 2
+        header_hs_start = hs_start + 1
+        header_adr_start = adr_start + 2
+        header_total_width = max(total_width, header_adr_start + w_adr)
+
+        def build_table_line(cells):
+            line = [" "] * total_width
+            for start, width, text, align in cells:
+                if align == "left":
+                    cell_text = text.ljust(width)
+                elif align == "right":
+                    cell_text = text.rjust(width)
+                else:
+                    cell_text = text.center(width)
+
+                for index, char in enumerate(cell_text):
+                    position = start + index
+                    if position < total_width:
+                        line[position] = char
+
+            return "".join(line).rstrip()
+
+        def build_header_line(cells):
+            line = [" "] * header_total_width
+            for start, width, text, align in cells:
+                if align == "left":
+                    cell_text = text.ljust(width)
+                elif align == "right":
+                    cell_text = text.rjust(width)
+                else:
+                    cell_text = text.center(width)
+
+                for index, char in enumerate(cell_text):
+                    position = start + index
+                    if position < header_total_width:
+                        line[position] = char
+
+            return "".join(line).rstrip()
+
+        match_summary = "```"
+        match_summary += build_header_line(
+            [
+                (0, w_map, "Mapa", "left"),
+                (header_result_start, w_result, "Wynik", "center"),
+                (header_kd_start, w_kd, "KD", "center"),
+                (header_kda_start, w_kda, "K/D/A", "center"),
+                (header_hs_start, w_hs, "HS", "center"),
+                (header_adr_start, w_adr, "ADR", "center"),
+            ]
+        ) + "\n"
+        match_summary += "-" * header_total_width + "\n"
+
+        for map_name, result_display, kd_ratio, kda_ratio, hs, adr in table_rows:
+            match_summary += build_table_line(
+                [
+                    (0, w_map, map_name, "left"),
+                    (result_start, w_result, result_display, "center"),
+                    (kd_start, w_kd, f"{kd_ratio:.2f}", "center"),
+                    (kda_start, w_kda, kda_ratio, "center"),
+                    (hs_start, w_hs, f"{hs}%", "center"),
+                    (adr_start, w_adr, f"{adr:.0f}", "center"),
+                ]
+            ) + "\n"
 
         match_summary += "```"
 
