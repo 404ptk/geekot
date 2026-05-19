@@ -14,16 +14,18 @@ def register_faceit_command(tree, guild, faceit_nick_autocomplete):
     async def faceit(interaction: discord.Interaction, nick: str):
         import faceit_utils as fu
 
+        await interaction.response.defer()
+
         player_data = fu.get_faceit_player_data(nick)
         if player_data is None:
-            await interaction.response.send_message(f"Nie znaleziono gracza o nicku {nick} na Faceit.", ephemeral=True)
+            await interaction.followup.send(f"Nie znaleziono gracza o nicku {nick} na Faceit.", ephemeral=True)
             return
 
         player_id = player_data["player_id"]
         player_nickname = player_data["nickname"]
         matches = fu.get_faceit_player_matches(player_id)
         if matches is None:
-            await interaction.response.send_message(
+            await interaction.followup.send(
                 f"Nie udało się pobrać danych o meczach gracza {player_nickname}.", ephemeral=True
             )
             return
@@ -64,16 +66,20 @@ def register_faceit_command(tree, guild, faceit_nick_autocomplete):
         )
 
         total_kills, total_deaths, total_assists, total_hs, total_wins, total_adr = 0, 0, 0, 0, 0, 0
+        total_clutch_wins, total_clutch_count = 0, 0
+        total_flash_success, total_flash_count = 0, 0
+        total_entry_wins, total_entry_count = 0, 0
+        total_utility_dmg = 0
         match_count = len(matches)
 
         match_summary = "```"
         match_summary += f"{'🗺 Mapa'.ljust(10)} {'📊 Wynik'.ljust(8)} {'🔪 K/D/A'.ljust(8)} {'🎯 HS'.ljust(5)} {'ADR'}\n"
-        match_summary += "-" * 40 + "\n"
+        match_summary += "-" * 43 + "\n"
 
         for match in matches:
             map_name = match.get("stats", {}).get("Map", "Nieznana").replace("de_", "")
             result = match.get("stats", {}).get("Result", "Brak danych")
-            result_display = "✅" if result == "1" else "❌" if result == "0" else "❓"
+            result_display = "🟢" if result == "1" else "🔴" if result == "0" else "❓"
             kills = int(match.get("stats", {}).get("Kills", 0))
             deaths = int(match.get("stats", {}).get("Deaths", 0))
             assists = int(match.get("stats", {}).get("Assists", 0))
@@ -88,9 +94,32 @@ def register_faceit_command(tree, guild, faceit_nick_autocomplete):
             if result == "1":
                 total_wins += 1
 
+            # Get detailed match stats for clutch, flash, utility data
+            match_id = match.get("stats", {}).get("Match Id")
+            if match_id:
+                match_details = fu.get_faceit_match_details(match_id)
+                if match_details:
+                    for team_name, team_data in match_details.get("teams", {}).items():
+                        for player in team_data.get("players", []):
+                            if player.get("nickname") == player_nickname:
+                                clutch = player.get("clutch", {"count": 0, "wins": 0})
+                                flash = player.get("flash", {"count": 0, "successes": 0})
+                                entry = player.get("entry", {"count": 0, "wins": 0})
+                                utility_dmg = player.get("utility_dmg", 0)
+
+                                total_clutch_wins += clutch.get("wins", 0)
+                                total_clutch_count += clutch.get("count", 0)
+                                total_flash_success += flash.get("successes", 0)
+                                total_flash_count += flash.get("count", 0)
+                                total_entry_wins += entry.get("wins", 0)
+                                total_entry_count += entry.get("count", 0)
+                                total_utility_dmg += utility_dmg
+                                break
+
             match_summary += f"{map_name.ljust(15)} {result_display.ljust(5)} {f'{kills}/{deaths}/{assists}'.ljust(9)} {f'{hs}%'.ljust(5)} {adr:.0f}\n"
 
         match_summary += "```"
+
         embed.add_field(name="🎮 Ostatnie 5 meczów", value=match_summary, inline=False)
 
         avg_kills = int(total_kills / match_count) if match_count else 0
@@ -99,9 +128,26 @@ def register_faceit_command(tree, guild, faceit_nick_autocomplete):
         win_percentage = (total_wins / match_count) * 100 if match_count else 0
         avg_kd = float(avg_kills / avg_deaths) if avg_deaths else 0
         avg_adr = float(total_adr / match_count) if match_count else 0
+        
+        clutch_percentage = (total_clutch_wins / total_clutch_count * 100) if total_clutch_count > 0 else 0
+        flash_percentage = (total_flash_success / total_flash_count * 100) if total_flash_count > 0 else 0
+        entry_percentage = (total_entry_wins / total_entry_count * 100) if total_entry_count > 0 else 0
+        avg_utility = total_utility_dmg / match_count if match_count else 0
+        
+        avg_stats_value = f"**K/D:** {avg_kd:.2f} | **HS:** {avg_hs:.0f}% | **ADR:** {avg_adr:.1f}\n"
+        avg_stats_value += f"**Winrate:** {win_percentage:.0f}%\n"
+        if total_entry_count > 0:
+            avg_stats_value += f"**Entry:** {entry_percentage:.0f}% ({total_entry_count})\n"
+        if total_clutch_count > 0:
+            avg_stats_value += f"**Clutche:** {clutch_percentage:.0f}% ({total_clutch_count})\n"
+        if total_flash_count > 0:
+            avg_stats_value += f"**Flashe:** {flash_percentage:.0f}% ({total_flash_count})\n"
+        if match_count > 0:
+            avg_stats_value += f"**Utility:** {avg_utility:.1f}"
+        
         embed.add_field(
             name="📊 Średnie statystyki",
-            value=f"**K/D:** {avg_kd:.2f} | **HS:** {avg_hs:.0f}% | **ADR:** {avg_adr:.1f}\n**Winrate:** {win_percentage:.0f}%",
+            value=avg_stats_value,
             inline=False,
         )
 
@@ -138,4 +184,4 @@ def register_faceit_command(tree, guild, faceit_nick_autocomplete):
                 inline=False,
             )
 
-        await interaction.response.send_message(embed=embed)
+        await interaction.followup.send(embed=embed)
