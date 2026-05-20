@@ -134,13 +134,13 @@ def register_faceit_command(tree, guild, faceit_nick_autocomplete):
 
         result_start = w_map + 1
         kd_start = result_start + w_result + 1
-        kda_start = kd_start + w_kd + 1
-        hs_start = kda_start + w_kda + 1
+        kda_start = kd_start + w_kd + 2
+        hs_start = kda_start + w_kda + 2
         adr_start = hs_start + w_hs + 2
         total_width = adr_start + w_adr
         header_result_start = result_start
         header_kd_start = kd_start + 2
-        header_kda_start = kda_start + 2
+        header_kda_start = kda_start + 1
         header_hs_start = hs_start + 1
         header_adr_start = adr_start + 2
         header_total_width = max(total_width, header_adr_start + w_adr)
@@ -160,7 +160,7 @@ def register_faceit_command(tree, guild, faceit_nick_autocomplete):
                     if position < total_width:
                         line[position] = char
 
-            return "".join(line).rstrip()
+            return "".join(line).rstrip() + "  "
 
         def build_header_line(cells):
             line = [" "] * header_total_width
@@ -177,9 +177,9 @@ def register_faceit_command(tree, guild, faceit_nick_autocomplete):
                     if position < header_total_width:
                         line[position] = char
 
-            return "".join(line).rstrip()
+            return "".join(line).rstrip() + " "
 
-        match_summary = "```"
+        match_summary = "`"
         match_summary += build_header_line(
             [
                 (0, w_map, "Mapa", "left"),
@@ -190,7 +190,7 @@ def register_faceit_command(tree, guild, faceit_nick_autocomplete):
                 (header_adr_start, w_adr, "ADR", "center"),
             ]
         ) + "\n"
-        match_summary += "-" * header_total_width + "\n"
+        #match_summary += "-" * header_total_width + "\n"
 
         for map_name, result_display, kd_ratio, kda_ratio, hs, adr in table_rows:
             match_summary += build_table_line(
@@ -204,7 +204,7 @@ def register_faceit_command(tree, guild, faceit_nick_autocomplete):
                 ]
             ) + "\n"
 
-        match_summary += "```"
+        match_summary += "`"
 
         embed.add_field(name="🎮 Ostatnie 5 meczów", value=match_summary, inline=False)
 
