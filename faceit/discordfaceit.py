@@ -32,17 +32,17 @@ async def get_discordfaceit_stats():
                     for match in matches:
                         result = match.get("stats", {}).get("Result")
                         if result == "1":
-                            outcomes.append("W")
+                            outcomes.append("🟢")
                         elif result == "0":
-                            outcomes.append("L")
+                            outcomes.append("🔴")
                         else:
-                            outcomes.append("?")
+                            outcomes.append("❓")
                     last_matches_str = "/".join(outcomes)
 
                     if len(outcomes) >= 3:
-                        if outcomes[:3] == ["W", "W", "W"]:
+                        if outcomes[:3] == ["🟢", "🟢", "🟢"]:
                             streak_emoji = " 🔥"
-                        elif outcomes[:3] == ["L", "L", "L"]:
+                        elif outcomes[:3] == ["🔴", "🔴", "🔴"]:
                             streak_emoji = " 😭"
 
             # ELO Diff logic
