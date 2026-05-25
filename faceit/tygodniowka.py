@@ -5,6 +5,8 @@ from datetime import datetime, timedelta
 import discord
 
 FACEIT_WEEKLY_STATS_FILE = "txt/faceit_weekly_stats.json"
+# If the bot runs in a different timezone than desired, adjust weekly summary
+WEEKLY_SEND_OFFSET_HOURS = 2
 
 
 def load_weekly_stats():
@@ -517,12 +519,17 @@ async def run_weekly_summary_if_due(client, today=None):
     import faceit_utils as fu
 
     now = today or datetime.now()
-    today_str = now.strftime("%Y-%m-%d")
+    # Adjust current time by configured offset so we can trigger the summary
+    # at a different server-local hour (e.g. server UTC, desired local midnight)
+    adjusted = now + timedelta(hours=WEEKLY_SEND_OFFSET_HOURS)
+    adjusted_date_str = adjusted.strftime("%Y-%m-%d")
 
     weekly_stats = load_weekly_stats()
     last_run_date = weekly_stats.get("last_run_date")
 
-    if now.weekday() != 0 or last_run_date == today_str:
+    # Run when the adjusted time falls on Monday (weekday==0) and we haven't
+    # already run for that adjusted date.
+    if adjusted.weekday() != 0 or last_run_date == adjusted_date_str:
         return
 
     target_channel_id = 1301248598108798996
@@ -532,12 +539,14 @@ async def run_weekly_summary_if_due(client, today=None):
 
     last_snapshot_date_str = weekly_stats.get("date")
     try:
-        start_dt = datetime.strptime(last_snapshot_date_str, "%Y-%m-%d") if last_snapshot_date_str else (now - timedelta(days=7))
+        start_dt = datetime.strptime(last_snapshot_date_str, "%Y-%m-%d") if last_snapshot_date_str else (adjusted - timedelta(days=7))
     except ValueError:
-        start_dt = now - timedelta(days=7)
+        start_dt = adjusted - timedelta(days=7)
 
     start_ts = start_dt.timestamp()
-    end_ts = now.timestamp()
+    # Use adjusted (shifted) time as the period end so the period matches the
+    # user's local midnight boundary.
+    end_ts = adjusted.timestamp()
     snapshot_elos = weekly_stats.get("stats", {})
 
     embed = create_weekly_stats_embed(
@@ -545,7 +554,7 @@ async def run_weekly_summary_if_due(client, today=None):
         end_ts,
         snapshot_elos,
         "📅 **Podsumowanie Tygodnia Faceit**",
-        f"Statystyki za okres: {start_dt.strftime('%d-%m-%Y')} - {today_str}",
+        f"Statystyki za okres: {start_dt.strftime('%d-%m-%Y')} - {adjusted_date_str}",
         guild=channel.guild,
     )
 
@@ -566,6 +575,7 @@ async def run_weekly_summary_if_due(client, today=None):
                 new_snapshot[nick] = elo
 
     weekly_stats["stats"] = new_snapshot
-    weekly_stats["date"] = today_str
-    weekly_stats["last_run_date"] = today_str
+    # Save date corresponding to the adjusted (local) date boundary
+    weekly_stats["date"] = adjusted_date_str
+    weekly_stats["last_run_date"] = adjusted_date_str
     save_weekly_stats(weekly_stats)
