@@ -177,28 +177,61 @@ def register_compare_command(tree, guild, faceit_nick_autocomplete):
         p2_daily = daily_change(s2["nick"], s2["elo"])
 
         embed = discord.Embed(
-            title=f"{title_prefix}Porównanie: {s1['nick']}  —  {s2['nick']}",
-            description=(
-                f"{get_faceit_level_badge(interaction.guild, s1['level'])} {s1['nick']} | **ELO:** {s1['elo']}{p1_daily}\n"
-                f"vs\n"
-                f"{get_faceit_level_badge(interaction.guild, s2['level'])} {s2['nick']} | **ELO:** {s2['elo']}{p2_daily}"
-            ),
+            title=f"{title_prefix}{s1['nick']}  —  {s2['nick']}",
+            # description=(
+            #     f"{get_faceit_level_badge(interaction.guild, s1['level'])} {s1['nick']} | **ELO:** {s1['elo']}{p1_daily}\n"
+            #     f"vs\n"
+            #     f"{get_faceit_level_badge(interaction.guild, s2['level'])} {s2['nick']} | **ELO:** {s2['elo']}{p2_daily}"
+            # ),
             color=discord.Color.orange(),
         )
         embed.set_thumbnail(url=s1.get("avatar"))
 
-        def stat_field(label, left_value, right_value, suffix=""):
-            combined = f"{_format_value(left_value, suffix)}   {_format_value(right_value, suffix)}"
-            return _code_line(label) + "\n" + _code_line(combined)
+        # Build a single compact stats field with a header that aligns both nicks
+        stats = [
+            ("--- K/D ---", s1["avg_kd"], s2["avg_kd"], ""),
+            ("--- ELO ---", s1["elo"], s2["elo"], ""),
+            ("--- ADR ---", s1["avg_adr"], s2["avg_adr"], ""),
+            ("--- Winrate % ---", s1["winrate"], s2["winrate"], ""),
+            ("--- avg Utility ---", s1["avg_utility"], s2["avg_utility"], ""),
+            ("--- Flash success % ---", s1["flash_pct"], s2["flash_pct"], ""),
+            ("--- Entry success % ---", s1["entry_pct"], s2["entry_pct"], ""),
+            ("--- Clutch success % ---", s1["clutch_pct"], s2["clutch_pct"], ""),
+            ("--- total MVPs ---", s1["total_mvps"], s2["total_mvps"], ""),
+        ]
 
-        embed.add_field(name="📊 Statystyki", value=stat_field("K/D", s1["avg_kd"], s2["avg_kd"]), inline=False)
-        embed.add_field(name="", value=stat_field("ADR", s1["avg_adr"], s2["avg_adr"]), inline=False)
-        embed.add_field(name="", value=stat_field("Winrate %", s1["winrate"], s2["winrate"]), inline=False)
-        embed.add_field(name="", value=stat_field("Utility (avg dmg)", s1["avg_utility"], s2["avg_utility"]), inline=False)
-        embed.add_field(name="", value=stat_field("Flash success %", s1["flash_pct"], s2["flash_pct"]), inline=False)
-        embed.add_field(name="", value=stat_field("Entry success %", s1["entry_pct"], s2["entry_pct"]), inline=False)
-        embed.add_field(name="", value=stat_field("Clutch success %", s1["clutch_pct"], s2["clutch_pct"]), inline=False)
-        embed.add_field(name="", value=stat_field("MVPs (total)", s1["total_mvps"], s2["total_mvps"]), inline=False)
+        # Split the line into left/right halves and enforce consistent widths
+        center_idx = EMBED_LINE_WIDTH // 2
+        left_width = center_idx
+        right_width = EMBED_LINE_WIDTH - center_idx - 1
+
+        # inner padding around '|' on each side (spaces)
+        inner_padding_each = 3
+
+        left_field_width = max(1, left_width - inner_padding_each)
+        right_field_width = max(1, right_width - inner_padding_each)
+
+        # header: center each nick within its field width
+        left_name = s1["nick"][:left_field_width]
+        right_name = s2["nick"][:right_field_width]
+        header_left = left_name.center(left_field_width)
+        header_right = right_name.center(right_field_width)
+        header_line = header_left + (" " * inner_padding_each) + "|" + (" " * inner_padding_each) + header_right
+        header_code = f"`{header_line}`"
+
+        parts = [header_code]
+        for label, left_val, right_val, suffix in stats:
+            fl = _format_value(left_val, suffix)[:left_field_width]
+            fr = _format_value(right_val, suffix)[:right_field_width]
+            # align values towards center: right for left column, left for right column
+            left_field = fl.rjust(left_field_width)
+            right_field = fr.ljust(right_field_width)
+            combined = left_field + (" " * inner_padding_each) + "|" + (" " * inner_padding_each) + right_field
+            parts.append(_code_line(label))
+            parts.append(f"`{combined}`")
+
+        field_value = "\n".join(parts)
+        embed.add_field(name="📊 Statystyki", value=field_value, inline=False)
 
         embed.set_footer(text="Porównanie na podstawie ostatnich 10 gier")
         await interaction.followup.send(embed=embed)
