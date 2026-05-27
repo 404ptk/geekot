@@ -226,7 +226,36 @@ def register_compare_command(tree, guild, faceit_nick_autocomplete):
             # align values towards center: right for left column, left for right column
             left_field = fl.rjust(left_field_width)
             right_field = fr.ljust(right_field_width)
-            combined = left_field + (" " * inner_padding_each) + "|" + (" " * inner_padding_each) + right_field
+
+            # determine which side is better (numeric comparison)
+            left_better = False
+            right_better = False
+            try:
+                lv = float(left_val)
+                rv = float(right_val)
+                if lv > rv:
+                    left_better = True
+                elif rv > lv:
+                    right_better = True
+            except Exception:
+                # non-numeric or equal: no arrows
+                pass
+
+            # build inner padding of fixed width; if emoji used, it replaces spaces so total length stays same
+            left_pad = " " * inner_padding_each
+            right_pad = " " * inner_padding_each
+            if left_better:
+                emoji = "⬅️"
+                e_len = len(emoji)
+                spaces = max(0, inner_padding_each - e_len)
+                left_pad = " " * spaces + emoji
+            elif right_better:
+                emoji = "➡️"
+                e_len = len(emoji)
+                spaces = max(0, inner_padding_each - e_len)
+                right_pad = emoji + " " * spaces
+
+            combined = left_field + left_pad + "|" + right_pad + right_field
             parts.append(_code_line(label))
             parts.append(f"`{combined}`")
 
