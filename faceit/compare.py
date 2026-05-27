@@ -173,11 +173,8 @@ def register_compare_command(tree, guild, faceit_nick_autocomplete):
                 return f" ({'+' if diff > 0 else ''}{diff})" if diff != 0 else ""
             return ""
 
-        p1_daily = daily_change(s1["nick"], s1["elo"])
-        p2_daily = daily_change(s2["nick"], s2["elo"])
-
         embed = discord.Embed(
-            title=f"{title_prefix}{s1['nick']}  —  {s2['nick']}",
+            title=f"{title_prefix} | {get_faceit_level_badge(interaction.guild, s1['level'])} {s1['nick']}  VS  {get_faceit_level_badge(interaction.guild, s2['level'])} {s2['nick']}",
             # description=(
             #     f"{get_faceit_level_badge(interaction.guild, s1['level'])} {s1['nick']} | **ELO:** {s1['elo']}{p1_daily}\n"
             #     f"vs\n"
@@ -185,9 +182,10 @@ def register_compare_command(tree, guild, faceit_nick_autocomplete):
             # ),
             color=discord.Color.orange(),
         )
-        embed.set_thumbnail(url=s1.get("avatar"))
+        embed.set_thumbnail(url="images/vs.png")
 
-        # Build a single compact stats field with a header that aligns both nicks
+        vs_file = discord.File("images/vs.png", filename="vs.png")
+        embed.set_thumbnail(url="attachment://vs.png")
         stats = [
             ("--- K/D ---", s1["avg_kd"], s2["avg_kd"], ""),
             ("--- ELO ---", s1["elo"], s2["elo"], ""),
@@ -285,4 +283,4 @@ def register_compare_command(tree, guild, faceit_nick_autocomplete):
         embed.add_field(name="📊 Statystyki", value=field_value, inline=False)
 
         embed.set_footer(text="Porównanie na podstawie ostatnich 10 gier")
-        await interaction.followup.send(embed=embed)
+        await interaction.followup.send(file=vs_file, embed=embed)
