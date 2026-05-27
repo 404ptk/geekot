@@ -32,15 +32,38 @@ def _code_line(text: str) -> str:
 
 
 def register_compare_command(tree, guild, faceit_nick_autocomplete):
+    async def compare_nick1_autocomplete(interaction: discord.Interaction, current: str):
+        selected_nick2 = getattr(getattr(interaction, "namespace", None), "nick2", None)
+        choices = await faceit_nick_autocomplete(interaction, current)
+        if selected_nick2:
+            choices = [choice for choice in choices if choice.value != selected_nick2]
+        return choices
+
+    async def compare_nick2_autocomplete(interaction: discord.Interaction, current: str):
+        selected_nick1 = getattr(getattr(interaction, "namespace", None), "nick1", None)
+        choices = await faceit_nick_autocomplete(interaction, current)
+        if selected_nick1:
+            choices = [choice for choice in choices if choice.value != selected_nick1]
+        return choices
+
     @tree.command(
         name="compare",
         description="Porównuje statystyki dwóch graczy Faceit (ostatnie 10 meczów)",
         guild=guild,
     )
     @app_commands.describe(nick1="Pierwszy nick", nick2="Drugi nick")
-    @app_commands.autocomplete(nick1=faceit_nick_autocomplete, nick2=faceit_nick_autocomplete)
+    @app_commands.autocomplete(nick1=compare_nick1_autocomplete, nick2=compare_nick2_autocomplete)
     async def compare(interaction: discord.Interaction, nick1: str, nick2: str):
         await interaction.response.defer()
+
+        if nick1.strip().lower() == nick2.strip().lower():
+            error_embed = discord.Embed(
+                title="Błąd",
+                description="Nie możesz porównać tej samej osoby.",
+                color=discord.Color.red(),
+            )
+            await interaction.followup.send(embed=error_embed, delete_after=5)
+            return
 
         import faceit_utils as fu
 
