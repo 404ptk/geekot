@@ -295,6 +295,14 @@ async def setup_faceit_commands(client: discord.Client, tree: app_commands.Comma
         guild=guild,
     )
 
+    from faceit.compare import register_compare_command
+
+    register_compare_command(
+        tree=tree,
+        guild=guild,
+        faceit_nick_autocomplete=faceit_nick_autocomplete,
+    )
+
     @tree.command(
         name="resetfaceitranking",
         description="Resetuje ranking Faceit (czyści plik rankingowy)",
