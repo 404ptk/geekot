@@ -223,13 +223,11 @@ def register_compare_command(tree, guild, faceit_nick_autocomplete):
         for label, left_val, right_val, suffix in stats:
             fl = _format_value(left_val, suffix)[:left_field_width]
             fr = _format_value(right_val, suffix)[:right_field_width]
-            # align values towards center: right for left column, left for right column
-            left_field = fl.rjust(left_field_width)
-            right_field = fr.ljust(right_field_width)
 
             # determine which side is better (numeric comparison)
             left_better = False
             right_better = False
+            diff_text = ""
             try:
                 lv = float(left_val)
                 rv = float(right_val)
@@ -237,9 +235,33 @@ def register_compare_command(tree, guild, faceit_nick_autocomplete):
                     left_better = True
                 elif rv > lv:
                     right_better = True
+
+                if lv != rv:
+                    diff = abs(lv - rv)
+                    if float(left_val).is_integer() and float(right_val).is_integer():
+                        diff_text = f"(+{int(diff)})"
+                    else:
+                        diff_text = f"(+{diff:.2f})"
             except Exception:
                 # non-numeric or equal: no arrows
                 pass
+
+            # add difference text on the winning side
+            left_text = fl
+            right_text = fr
+            if diff_text:
+                if left_better:
+                    left_text = f"{diff_text} {fl}"
+                elif right_better:
+                    right_text = f"{fr} {diff_text}"
+
+            # align values towards center: right for left column, left for right column
+            left_field = left_text.rjust(left_field_width)
+            right_field = right_text.ljust(right_field_width)
+            if len(left_field) > left_field_width:
+                left_field = left_field[-left_field_width:]
+            if len(right_field) > right_field_width:
+                right_field = right_field[:right_field_width]
 
             # build inner padding of fixed width; if emoji used, it replaces spaces so total length stays same
             left_pad = " " * inner_padding_each
