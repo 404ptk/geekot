@@ -34,6 +34,7 @@ from commands import football
 import leetify_utils
 from commands import steam as steam_module
 from commands import relations as relations_module
+from commands import wakacje as wakacje_module
 from startup_logger import record_startup_step, print_startup_summary
 
 
@@ -336,6 +337,7 @@ async def on_ready():
         ("Leetify commands", leetify_utils.setup_leetify_commands(client, client.tree, guild_id=GUILD_ID)),
         ("Steam commands", steam_module.setup_steam_commands(client, client.tree, guild_id=GUILD_ID)),
         ("Relations commands", relations_module.setup_relations_commands(client, client.tree, guild_id=GUILD_ID)),
+        ("Wakacje commands", wakacje_module.setup_wakacje_commands(client, client.tree)),
     ]
 
     for step_name, step_coroutine in startup_steps:
