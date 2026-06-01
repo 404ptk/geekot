@@ -8,6 +8,7 @@ from faceit.common import format_faceit_form, get_faceit_level_badge, get_guild_
 
 FACEIT_LIVE_STATE_FILE = "txt/discordfaceit_live.json"
 FACEIT_LIVE_CHANNEL_ID = 1504791638264905778
+FACEIT_LIVE_MESSAGE_ID = 1504907988249477270
 CLIENT_REF = None
 
 
@@ -142,32 +143,17 @@ async def refresh_discordfaceit_live_message():
 
     embed = build_discordfaceit_live_embed(getattr(channel, "guild", None))
 
-    message = None
     try:
-        async for msg in channel.history(limit=10):
-            if msg.author == CLIENT_REF.user:
-                message = msg
-                break
-    except (discord.Forbidden, discord.HTTPException):
-        pass
-
-    if message:
-        try:
-            await message.edit(embed=embed)
-            return
-        except discord.HTTPException:
-            message = None
-
-    try:
-        message = await channel.send(embed=embed)
-        try:
-            await message.pin()
-        except (discord.Forbidden, discord.HTTPException):
-            pass
-
-        save_faceit_live_state({"channel_id": channel.id, "message_id": message.id})
-    except discord.HTTPException as exc:
-        print(f"Nie udało się odświeżyć Faceit live: {exc}")
+        message = await channel.fetch_message(FACEIT_LIVE_MESSAGE_ID)
+        await message.edit(embed=embed)
+        save_faceit_live_state({"channel_id": channel.id, "message_id": FACEIT_LIVE_MESSAGE_ID})
+    except discord.NotFound:
+        print(
+            f"Faceit live: nie znaleziono wiadomości {FACEIT_LIVE_MESSAGE_ID} "
+            f"na kanale {channel.id} — pomijam odświeżenie (bez wysyłania nowej)."
+        )
+    except (discord.Forbidden, discord.HTTPException) as exc:
+        print(f"Nie udało się odświeżyć Faceit live (msg {FACEIT_LIVE_MESSAGE_ID}): {exc}")
 
 
 @tasks.loop(minutes=1)

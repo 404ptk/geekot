@@ -405,7 +405,7 @@ def create_weekly_stats_embed(start_ts, end_ts, snapshot_elos, title, descriptio
     if active_players:
         def _player_score(p):
             m = p.get("metrics", {}) or {}
-            return m.get("kd", 0) * 100 + m.get("avg_adr", 0) + m.get("avg_kills", 0) * 100
+            return m.get("kd", 0) * 100 + m.get("avg_adr", 0) + m.get("avg_kills", 0) * 10
 
         goat = max(active_players, key=_player_score)
         embed.add_field(
