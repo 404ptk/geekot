@@ -107,10 +107,60 @@ async def get_last_match_stats(nickname, guild=None):
             team_rating_str += f"➡️ {player_nickname} zagrał na średnim MMR drużyny\n"
 
     map_name = match_stats.get("map", "Nieznana").replace("de_", "")
-    score_display = match_stats.get("score")
+    last_stats = last_match.get("stats", {})
+
+    def format_halftime_score(first_half_raw):
+        if first_half_raw is None:
+            return None
+        raw = str(first_half_raw).strip()
+        if not raw:
+            return None
+        try:
+            player_first_half = int(raw)
+            return f"{player_first_half}:{12 - player_first_half}"
+        except ValueError:
+            return None
+
+    def format_final_score_player_first(stats):
+        score_raw = stats.get("Score")
+        if not score_raw:
+            return match_stats.get("score")
+
+        normalized = str(score_raw).strip().replace(":", "/")
+        parts = [part.strip() for part in normalized.split("/") if part.strip()]
+        if len(parts) != 2:
+            return normalized.replace(" ", "").replace("/", ":")
+
+        try:
+            team_a, team_b = int(parts[0]), int(parts[1])
+        except ValueError:
+            return normalized.replace(" ", "").replace("/", ":")
+
+        final_score_raw = stats.get("Final Score")
+        if final_score_raw is not None and str(final_score_raw).strip():
+            try:
+                player_rounds = int(str(final_score_raw).strip())
+                enemy_rounds = team_b if team_a == player_rounds else team_a
+                return f"{player_rounds}:{enemy_rounds}"
+            except ValueError:
+                pass
+
+        result = stats.get("Result")
+        if result == "1":
+            return f"{max(team_a, team_b)}:{min(team_a, team_b)}"
+        if result == "0":
+            return f"{min(team_a, team_b)}:{max(team_a, team_b)}"
+        return f"{team_a}:{team_b}"
+
+    first_half_display = format_halftime_score(last_stats.get("First Half Score"))
+    score_display = format_final_score_player_first(last_stats)
+
     desc = f"**Mapa:** {map_name} | {match_result}"
     if score_display:
-        desc += f" | {score_display}\n"
+        if first_half_display:
+            desc += f" | {first_half_display} -> {score_display}\n"
+        else:
+            desc += f" | {score_display}\n"
     if team_rating_str:
         desc += f"\n{team_rating_str}"
 
