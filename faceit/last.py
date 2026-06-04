@@ -326,10 +326,8 @@ async def get_last_match_stats(nickname, guild=None):
 
         adv_stats = (
             f"{mk_str}"
-            f"**Entry:** `{entry['wins']}/{entry['count']}`\n"
-            f"**Clutche:** `{clutch['wins']}/{clutch['count']}`\n"
-            f"**Flashe:** `{flash['successes']}/{flash['count']}`\n"
-            f"**Utility Dmg:** `{udmg}`\n"
+            f"**Entry:** `{entry['wins']}/{entry['count']}` ▫️ **Clutche:** `{clutch['wins']}/{clutch['count']}`\n"
+            f"**Flashe:** `{flash['successes']}/{flash['count']}` ▫️ **Utility Dmg:** `{udmg}`\n"
             f"**K/R Ratio:** `{kr}`\n"
             f"**MVP:** `{mvps}`"
         )
