@@ -18,6 +18,24 @@ def get_faceit_level_badge(guild, level):
     return "❓"
 
 
+def _country_code_to_unicode_flag(country_code):
+    code = country_code.strip().upper()
+    if len(code) != 2 or not code.isalpha():
+        return ""
+    return "".join(chr(ord(char) + 127397) for char in code)
+
+
+def get_country_flag_badge(guild, country_code):
+    if not country_code or not isinstance(country_code, str):
+        return ""
+
+    emoji_text = get_guild_emoji_text(guild, f"flag_{country_code.lower()}")
+    if emoji_text:
+        return emoji_text
+
+    return _country_code_to_unicode_flag(country_code)
+
+
 def format_faceit_form(outcomes):
     if not outcomes:
         return "❓"

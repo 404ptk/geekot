@@ -1,7 +1,7 @@
 import discord
 from discord import app_commands
 import requests
-from faceit.common import get_faceit_level_badge, get_guild_emoji_text
+from faceit.common import get_country_flag_badge, get_faceit_level_badge, get_guild_emoji_text
 
 
 async def get_last_match_stats(nickname, guild=None):
@@ -204,8 +204,10 @@ async def get_last_match_stats(nickname, guild=None):
 
             kd_ratio = kills / deaths if deaths > 0 else float(kills)
 
-            p_level = roster.get(player["nickname"], {}).get("level", 0)
+            roster_entry = roster.get(player["nickname"], {})
+            p_level = roster_entry.get("level", 0)
             level_badge = get_faceit_level_badge(guild, p_level)
+            country_flag = get_country_flag_badge(guild, roster_entry.get("country", ""))
 
             players.append(
                 {
@@ -219,6 +221,7 @@ async def get_last_match_stats(nickname, guild=None):
                     "hs_str": str(hs),
                     "kd_str": f"{kd_ratio:.2f}",
                     "level_badge": level_badge,
+                    "country_flag": country_flag,
                     "is_target": player["nickname"] == player_nickname,
                     "is_premade": player["nickname"] in fu.player_nicknames,
                 }
@@ -265,13 +268,14 @@ async def get_last_match_stats(nickname, guild=None):
 
     def format_team_stats(players):
         header = (
-            f"`-- {'Nick'.ljust(w_nick)}{'K'.ljust(w_k)}{'D'.ljust(w_d)}{'A'.ljust(w_a)}"
+            f"`--    {'Nick'.ljust(w_nick)}{'K'.ljust(w_k)}{'D'.ljust(w_d)}{'A'.ljust(w_a)}"
             f"{'K/D'.ljust(w_kd)}{'ADR'.ljust(w_adr)}{'HS'.ljust(w_hs)}`\n"
         )
         team_table = header
 
         for p in players:
-            line = f"{p['level_badge']} `{p['nickname'].ljust(w_nick)}"
+            flag_part = f" {p['country_flag']}" if p["country_flag"] else ""
+            line = f"{p['level_badge']}{flag_part}  `{p['nickname'].ljust(w_nick)}"
             line += f"{str(p['kills']).ljust(w_k)}"
             line += f"{str(p['deaths']).ljust(w_d)}"
             line += f"{str(p['assists']).ljust(w_a)}"

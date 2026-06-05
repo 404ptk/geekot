@@ -198,13 +198,15 @@ def get_faceit_match_roster(match_id):
             roster[nick] = {
                 "elo": "",
                 "level": level,
+                "country": "",
             }
-    # Fetch ELO for all players
+    # Fetch ELO and country for all players (same /players?nickname request)
     for nick in roster:
         p_data = get_faceit_player_data(nick)
         if p_data:
             elo = p_data.get('games', {}).get('cs2', {}).get('faceit_elo', '')
             roster[nick]["elo"] = str(elo)
+            roster[nick]["country"] = p_data.get("country", "")
     return roster
 
 def reset_faceit_ranking():
