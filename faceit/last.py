@@ -332,8 +332,7 @@ async def get_last_match_stats(nickname, guild=None):
             f"{mk_str}"
             f"**Entry:** `{entry['wins']}/{entry['count']}` ▫️ **Clutche:** `{clutch['wins']}/{clutch['count']}`\n"
             f"**Flashe:** `{flash['successes']}/{flash['count']}` ▫️ **Utility Dmg:** `{udmg}`\n"
-            f"**K/R Ratio:** `{kr}`\n"
-            f"**MVP:** `{mvps}`"
+            f"**K/R Ratio:** `{kr}` ▫️ **MVP:** `{mvps}`\n"
         )
         embed.add_field(
             name=f"Statystyki gracza {player_nickname}",
