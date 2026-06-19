@@ -36,6 +36,7 @@ from commands import steam as steam_module
 from commands import relations as relations_module
 from commands import wakacje as wakacje_module
 from shorts import youtube as youtube_shorts_module
+from drive import daily as drive_daily_module
 from startup_logger import record_startup_step, print_startup_summary
 
 
@@ -340,6 +341,7 @@ async def on_ready():
         ("Relations commands", relations_module.setup_relations_commands(client, client.tree, guild_id=GUILD_ID)),
         ("Wakacje commands", wakacje_module.setup_wakacje_commands(client, client.tree)),
         ("YouTube Shorts", youtube_shorts_module.setup_youtube_shorts(client, client.tree, guild_id=GUILD_ID)),
+        ("Drive daily memory", drive_daily_module.setup_drive_daily(client, client.tree, guild_id=GUILD_ID)),
     ]
 
     for step_name, step_coroutine in startup_steps:
