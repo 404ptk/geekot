@@ -9,6 +9,13 @@ import requests
 from discord import app_commands
 from discord.ext import tasks
 
+from daily_guard import (
+    already_sent_today,
+    is_within_send_window,
+    mark_sent_today,
+    today_str,
+)
+
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 TXT_DIR = PROJECT_ROOT / "txt"
 API_KEY_FILE = TXT_DIR / "youtube_api_key.txt"
@@ -21,6 +28,7 @@ USER_AGENT = {
     "Accept-Language": "en-US,en;q=0.9,pl;q=0.8",
 }
 CONSENT_COOKIES = {"CONSENT": "YES+1"}
+DAILY_EMBED_MARKER = "YouTube Shorts"
 
 CLIENT_REF: Optional[discord.Client] = None
 
@@ -414,33 +422,39 @@ def build_stats_embed(stats: Dict[str, Any]) -> discord.Embed:
 
 async def run_daily_stats_if_due(client: discord.Client) -> None:
     config = load_config()
-    if not config.get("discord_channel_id"):
+    channel_id = config.get("discord_channel_id")
+    if not channel_id:
         return
 
-    now = datetime.now()
     offset_hours = int(config.get("send_offset_hours", 0))
-    adjusted = now + timedelta(hours=offset_hours)
-    today_str = adjusted.strftime("%Y-%m-%d")
+    today = today_str(offset_hours)
+    send_hour = int(config.get("send_hour", 9))
+    window_hours = int(config.get("send_window_hours", 2))
 
     state = load_state()
-    if state.get("last_run_date") == today_str:
+    if await already_sent_today(
+        client,
+        int(channel_id),
+        DAILY_EMBED_MARKER,
+        state,
+        save_state,
+        offset_hours=offset_hours,
+    ):
         return
 
-    send_hour = int(config.get("send_hour", 9))
-    if adjusted.hour < send_hour:
+    if not is_within_send_window(send_hour, window_hours, offset_hours):
         return
 
     try:
-        stats = fetch_shorts_stats_with_comparison(config, reference_date=today_str)
+        stats = fetch_shorts_stats_with_comparison(config, reference_date=today)
     except Exception as e:
         print(f"[YT Shorts] Daily fetch failed: {e}")
         return
 
-    channel_id = int(config["discord_channel_id"])
-    channel = client.get_channel(channel_id)
+    channel = client.get_channel(int(channel_id))
     if not channel:
         try:
-            channel = await client.fetch_channel(channel_id)
+            channel = await client.fetch_channel(int(channel_id))
         except Exception:
             channel = None
     if not channel:
@@ -455,9 +469,9 @@ async def run_daily_stats_if_due(client: discord.Client) -> None:
         print(f"[YT Shorts] Failed to post daily stats: {e}")
         return
 
-    save_daily_snapshot(stats, today_str)
+    save_daily_snapshot(stats, today)
     state = load_state()
-    state["last_run_date"] = today_str
+    state["last_run_date"] = today
     save_state(state)
 
 
@@ -488,6 +502,13 @@ async def setup_youtube_shorts(
             stats = fetch_shorts_stats_with_comparison()
             embed = build_stats_embed(stats)
             await interaction.followup.send(embed=embed)
+
+            config = load_config()
+            daily_channel_id = config.get("discord_channel_id")
+            offset_hours = int(config.get("send_offset_hours", 0))
+            if daily_channel_id and interaction.channel_id == int(daily_channel_id):
+                state = load_state()
+                mark_sent_today(state, save_state, offset_hours=offset_hours)
         except Exception as e:
             await interaction.followup.send(f"❌ {e}", ephemeral=True)
 

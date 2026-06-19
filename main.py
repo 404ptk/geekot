@@ -35,8 +35,13 @@ import leetify_utils
 from commands import steam as steam_module
 from commands import relations as relations_module
 from commands import wakacje as wakacje_module
-from shorts import youtube as youtube_shorts_module
-from drive import daily as drive_daily_module
+from pathlib import Path
+
+# Moduły w google/ — folder bez __init__.py, żeby nie kolidować z pip google.*
+sys.path.insert(0, str(Path(__file__).resolve().parent / "google"))
+
+import drive_daily as drive_daily_module
+import youtube_shorts as youtube_shorts_module
 from startup_logger import record_startup_step, print_startup_summary
 
 
