@@ -4,7 +4,7 @@ import random
 import tempfile
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 import discord
 from discord import app_commands
@@ -30,6 +30,10 @@ DRIVE_SCOPES = ["https://www.googleapis.com/auth/drive.readonly"]
 FOLDER_MIME = "application/vnd.google-apps.folder"
 MAX_DISCORD_BYTES = 25 * 1024 * 1024
 DAILY_EMBED_MARKER = "Losowe wspomnienie"
+HEIC_EXTENSIONS = {".heic", ".heif"}
+HEIC_MIMES = {"image/heic", "image/heif", "image/heif-sequence"}
+
+_heif_registered = False
 
 CLIENT_REF: Optional[discord.Client] = None
 
@@ -232,6 +236,51 @@ def download_drive_file(service, file_id: str, destination: Path) -> None:
             _, done = downloader.next_chunk()
 
 
+def _ensure_heif_support() -> None:
+    global _heif_registered
+    if _heif_registered:
+        return
+    import pillow_heif
+
+    pillow_heif.register_heif_opener()
+    _heif_registered = True
+
+
+def is_heic_file(path: Path, mime_type: str = "") -> bool:
+    if path.suffix.lower() in HEIC_EXTENSIONS:
+        return True
+    return mime_type.lower().split(";")[0].strip() in HEIC_MIMES
+
+
+def convert_heic_for_discord(path: Path, original_name: str) -> Tuple[Path, str]:
+    _ensure_heif_support()
+    from PIL import Image
+
+    jpg_path = path.with_suffix(".jpg")
+    with Image.open(path) as img:
+        img.convert("RGB").save(jpg_path, "JPEG", quality=92, optimize=True)
+
+    path.unlink(missing_ok=True)
+    jpg_name = f"{Path(original_name).stem}.jpg"
+
+    if jpg_path.stat().st_size > MAX_DISCORD_BYTES:
+        jpg_path.unlink(missing_ok=True)
+        raise RuntimeError(f"Plik {original_name} po konwersji przekracza limit Discord.")
+
+    return jpg_path, jpg_name
+
+
+def prepare_file_for_discord(
+    path: Path,
+    mime_type: str,
+    original_name: str,
+) -> Tuple[Path, str, bool]:
+    if is_heic_file(path, mime_type):
+        new_path, new_name = convert_heic_for_discord(path, original_name)
+        return new_path, new_name, True
+    return path, original_name, False
+
+
 def prepare_random_post(config: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     config = config or load_config()
     folder_id = config.get("folder_id")
@@ -257,8 +306,14 @@ def prepare_random_post(config: Optional[Dict[str, Any]] = None) -> Dict[str, An
     temp_path = Path(temp_file.name)
     temp_file.close()
 
+    mime = picked.get("mimeType", "")
     try:
         download_drive_file(service, picked["id"], temp_path)
+        temp_path, discord_filename, converted_from_heic = prepare_file_for_discord(
+            temp_path,
+            mime,
+            picked["name"],
+        )
         file_size = temp_path.stat().st_size
         if file_size > MAX_DISCORD_BYTES:
             temp_path.unlink(missing_ok=True)
@@ -269,12 +324,13 @@ def prepare_random_post(config: Optional[Dict[str, Any]] = None) -> Dict[str, An
         temp_path.unlink(missing_ok=True)
         raise
 
-    mime = picked.get("mimeType", "")
     return {
         "file_id": picked["id"],
         "name": picked["name"],
+        "discord_filename": discord_filename,
         "mime_type": mime,
         "is_video": mime.startswith("video/"),
+        "converted_from_heic": converted_from_heic,
         "local_path": temp_path,
         "reset_pool": reset_pool,
     }
@@ -282,6 +338,8 @@ def prepare_random_post(config: Optional[Dict[str, Any]] = None) -> Dict[str, An
 
 def build_memory_embed(post: Dict[str, Any]) -> discord.Embed:
     description = f"**{post['name']}**"
+    if post.get("converted_from_heic"):
+        description += "\n_(HEIC → JPG, żeby Discord wyświetlił podgląd)_"
     if post.get("reset_pool"):
         description += "\n_Kolekcja się skończyła — losujemy od nowa._"
 
@@ -306,8 +364,12 @@ async def send_random_memory(
         channel = await client.fetch_channel(channel_id)
 
     embed = build_memory_embed(post)
+    discord_filename = post.get("discord_filename", post["name"])
     try:
-        await channel.send(embed=embed, file=discord.File(str(post["local_path"]), filename=post["name"]))
+        await channel.send(
+            embed=embed,
+            file=discord.File(str(post["local_path"]), filename=discord_filename),
+        )
     finally:
         post["local_path"].unlink(missing_ok=True)
 
