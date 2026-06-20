@@ -397,7 +397,6 @@ def build_stats_embed(stats: Dict[str, Any]) -> discord.Embed:
         title="📊 YouTube Shorts — statystyki dobowe",
         description=(
             f"Kanał: **{stats['channel_title']}**\n"
-            f"Ostatnie **{stats['video_count']}** filmów"
         ),
         color=discord.Color.red(),
         timestamp=datetime.now(),
