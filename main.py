@@ -35,6 +35,7 @@ import leetify_utils
 from commands import steam as steam_module
 from commands import relations as relations_module
 from commands import wakacje as wakacje_module
+from jobs import setup_jobs_watch
 from pathlib import Path
 
 # Moduły w google/ — folder bez __init__.py, żeby nie kolidować z pip google.*
@@ -220,6 +221,7 @@ async def on_ready():
         ("Wakacje commands", wakacje_module.setup_wakacje_commands(client, client.tree)),
         ("YouTube Shorts", youtube_shorts_module.setup_youtube_shorts(client, client.tree, guild_id=GUILD_ID)),
         ("Drive daily memory", drive_daily_module.setup_drive_daily(client, client.tree, guild_id=GUILD_ID)),
+        ("Jobs watcher", setup_jobs_watch(client, client.tree, guild_id=GUILD_ID)),
     ]
 
     for step_name, step_coroutine in startup_steps:
