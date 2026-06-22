@@ -4,8 +4,19 @@ from typing import Any, Dict, List
 import discord
 
 from jobs.config import load_config
-from jobs.constants import DISMISS_EMOJI
+from jobs.constants import (
+    BULK_POST_DELAY_SECONDS,
+    BULK_POST_THRESHOLD,
+    DISMISS_EMOJI,
+    NORMAL_POST_DELAY_SECONDS,
+)
 from jobs.embeds import build_offer_embed
+
+
+def post_delay_seconds(offer_count: int) -> float:
+    if offer_count > BULK_POST_THRESHOLD:
+        return BULK_POST_DELAY_SECONDS
+    return NORMAL_POST_DELAY_SECONDS
 
 
 async def get_discord_channel(client: discord.Client, channel_id: int):
@@ -24,16 +35,31 @@ async def post_offers(client: discord.Client, offers: List[Dict[str, Any]], chan
         print(f"[Jobs] Cannot find Discord channel {channel_id}")
         return
 
-    for offer in offers:
+    delay_seconds = post_delay_seconds(len(offers))
+    if len(offers) > BULK_POST_THRESHOLD:
+        print(
+            f"[Jobs] Bulk post mode: {len(offers)} offers, "
+            f"waiting {delay_seconds}s between messages."
+        )
+
+    posted = 0
+    failed = 0
+    for index, offer in enumerate(offers, start=1):
         try:
             message = await channel.send(embed=build_offer_embed(offer))
             try:
                 await message.add_reaction(DISMISS_EMOJI)
             except Exception as e:
                 print(f"[Jobs] Failed to add dismiss reaction: {e}")
-            await asyncio.sleep(1.5)
+            posted += 1
         except Exception as e:
+            failed += 1
             print(f"[Jobs] Failed to post offer {offer.get('offer_uuid')}: {e}")
+
+        if index < len(offers):
+            await asyncio.sleep(delay_seconds)
+
+    print(f"[Jobs] Posted {posted}/{len(offers)} offer(s)" + (f", {failed} failed" if failed else ""))
 
 
 async def handle_dismiss_reaction(client: discord.Client, payload: discord.RawReactionActionEvent):

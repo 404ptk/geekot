@@ -1,10 +1,15 @@
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 import discord
 
 from jobs.constants import LEVEL_LABELS
 from jobs.filters import detect_offer_level
 from jobs.providers.isitfair import company_logo_url, source_label
+from jobs.utils import sanitize_url
+
+
+def resolve_offer_url(offer: Dict[str, Any]) -> Optional[str]:
+    return sanitize_url(offer.get("offer_href"))
 
 
 def format_salary(offer: Dict[str, Any]) -> str:
@@ -25,12 +30,12 @@ def build_offer_embed(offer: Dict[str, Any]) -> discord.Embed:
 
     embed = discord.Embed(
         title=offer.get("offer_title", "Nowa oferta pracy"),
-        url=offer.get("offer_href"),
+        url=resolve_offer_url(offer),
         description=company_name,
         color=discord.Color.green() if is_fair else discord.Color.orange(),
     )
 
-    logo_url = company_logo_url(offer)
+    logo_url = sanitize_url(company_logo_url(offer))
     if logo_url:
         embed.set_thumbnail(url=logo_url)
 
