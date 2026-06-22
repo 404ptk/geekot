@@ -32,6 +32,10 @@ MAX_DISCORD_BYTES = 25 * 1024 * 1024
 DAILY_EMBED_MARKER = "Losowe wspomnienie"
 HEIC_EXTENSIONS = {".heic", ".heif"}
 HEIC_MIMES = {"image/heic", "image/heif", "image/heif-sequence"}
+ACCEPTED_IMAGE_EXTENSIONS = {
+    ".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp", *HEIC_EXTENSIONS,
+}
+ACCEPTED_VIDEO_EXTENSIONS = {".mp4", ".webm", ".mov", ".avi", ".mkv", ".m4v"}
 
 _heif_registered = False
 
@@ -110,12 +114,28 @@ def list_folder_children(service, folder_id: str) -> List[Dict[str, Any]]:
     return items
 
 
+def has_acceptable_extension(file_item: Dict[str, Any]) -> bool:
+    suffix = Path(file_item.get("name", "")).suffix.lower()
+    if not suffix:
+        return False
+
+    mime = file_item.get("mimeType", "")
+    if mime.startswith("image/"):
+        return suffix in ACCEPTED_IMAGE_EXTENSIONS
+    if mime.startswith("video/"):
+        return suffix in ACCEPTED_VIDEO_EXTENSIONS
+    return False
+
+
 def is_eligible_media(file_item: Dict[str, Any], sent_ids: Set[str]) -> bool:
     if file_item["id"] in sent_ids:
         return False
 
     mime = file_item.get("mimeType", "")
     if not (mime.startswith("image/") or mime.startswith("video/")):
+        return False
+
+    if not has_acceptable_extension(file_item):
         return False
 
     size_raw = file_item.get("size")
@@ -301,7 +321,7 @@ def prepare_random_post(config: Optional[Dict[str, Any]] = None) -> Dict[str, An
     if not picked:
         raise RuntimeError("Nie znaleziono żadnych zdjęć ani nagrań w folderze.")
 
-    suffix = Path(picked["name"]).suffix or ".bin"
+    suffix = Path(picked["name"]).suffix.lower()
     temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=suffix)
     temp_path = Path(temp_file.name)
     temp_file.close()
