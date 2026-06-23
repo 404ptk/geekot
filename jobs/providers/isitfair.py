@@ -2,16 +2,10 @@ import requests
 
 from jobs.filters import matches_city, is_fully_remote
 from jobs.providers.common import api_filters, merge_search
+from jobs.providers.sources import company_logo_url, source_label
 
 API_BASE_URL = "https://isitfair.pl/api/v1/offers/search"
-LOGO_BASE_URL = "https://isitfair.pl/storage/logos/"
 USER_AGENT = {"User-Agent": "geekot-bot/1.0 (+discord jobs watcher)"}
-
-SOURCE_LABELS = {
-    "justjoin.it": "Just Join IT",
-    "nofluffjobs.com": "No Fluff Jobs",
-    "pracuj.pl": "Pracuj.pl",
-}
 
 
 def build_params(filters, page: int, search: str = None):
@@ -76,15 +70,3 @@ def collect_offers(filters, max_pages: int):
     return collected
 
 
-def company_logo_url(offer):
-    logo = (offer.get("company") or {}).get("company_logo")
-    if not logo:
-        return None
-    if logo.startswith("http"):
-        return logo
-    filename = logo.rsplit("/", 1)[-1]
-    return f"{LOGO_BASE_URL}{filename}"
-
-
-def source_label(source: str) -> str:
-    return SOURCE_LABELS.get(source, source)

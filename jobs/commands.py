@@ -62,6 +62,7 @@ def register_commands(client: discord.Client, tree: app_commands.CommandTree, gu
             app_commands.Choice(name="Just Join IT", value="justjoin.it"),
             app_commands.Choice(name="No Fluff Jobs", value="nofluffjobs.com"),
             app_commands.Choice(name="Pracuj.pl", value="pracuj.pl"),
+            app_commands.Choice(name="OLX Praca", value="olx.pl"),
         ],
         kategoria=[
             app_commands.Choice(name="Python", value="python"),

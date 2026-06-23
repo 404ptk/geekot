@@ -4,8 +4,8 @@ import discord
 
 from jobs.constants import LEVEL_LABELS
 from jobs.filters import detect_offer_level
-from jobs.providers.isitfair import company_logo_url, source_label
-from jobs.utils import sanitize_url
+from jobs.providers.sources import company_logo_url, footer_label, source_label
+from jobs.utils import format_published_date, sanitize_url
 
 
 def resolve_offer_url(offer: Dict[str, Any]) -> Optional[str]:
@@ -60,8 +60,8 @@ def build_offer_embed(offer: Dict[str, Any]) -> discord.Embed:
     fair_label = "Tak" if is_fair else "Nie"
     embed.add_field(name="Fair offer", value=fair_label, inline=True)
 
-    published = offer.get("offer_published_at")
-    footer = "Is It Fair"
+    published = format_published_date(offer.get("offer_published_at"))
+    footer = footer_label(offer.get("offer_source"))
     if published:
         footer += f" • {published}"
     embed.set_footer(text=footer)
