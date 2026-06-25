@@ -10,23 +10,15 @@ from jobs.constants import (
     DISMISS_EMOJI,
     NORMAL_POST_DELAY_SECONDS,
 )
+from jobs.discord_utils import get_discord_channel
 from jobs.embeds import build_offer_embed
+from jobs.state import load_state
 
 
 def post_delay_seconds(offer_count: int) -> float:
     if offer_count > BULK_POST_THRESHOLD:
         return BULK_POST_DELAY_SECONDS
     return NORMAL_POST_DELAY_SECONDS
-
-
-async def get_discord_channel(client: discord.Client, channel_id: int):
-    channel = client.get_channel(channel_id)
-    if channel:
-        return channel
-    try:
-        return await client.fetch_channel(channel_id)
-    except Exception:
-        return None
 
 
 async def post_offers(client: discord.Client, offers: List[Dict[str, Any]], channel_id: int):
@@ -61,6 +53,11 @@ async def post_offers(client: discord.Client, offers: List[Dict[str, Any]], chan
 
     print(f"[Jobs] Posted {posted}/{len(offers)} offer(s)" + (f", {failed} failed" if failed else ""))
 
+    if posted > 0:
+        from jobs.sticky_status import refresh_sticky_status
+
+        await refresh_sticky_status(client, channel_id)
+
 
 async def handle_dismiss_reaction(client: discord.Client, payload: discord.RawReactionActionEvent):
     if str(payload.emoji) != DISMISS_EMOJI:
@@ -87,6 +84,10 @@ async def handle_dismiss_reaction(client: discord.Client, payload: discord.RawRe
     if not message.author or message.author.id != client.user.id:
         return
     if not message.embeds:
+        return
+
+    sticky_id = load_state().get("sticky_status_message_id")
+    if sticky_id and payload.message_id == sticky_id:
         return
 
     try:
