@@ -34,6 +34,7 @@ def build_offer_embed(offer: Dict[str, Any]) -> discord.Embed:
         description=company_name,
         color=discord.Color.green() if is_fair else discord.Color.orange(),
     )
+    
 
     logo_url = sanitize_url(company_logo_url(offer))
     if logo_url:
