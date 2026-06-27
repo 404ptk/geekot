@@ -8,7 +8,6 @@ ARCHIVE_CATEGORY_ID = 1360605748186452110
 OWNER_ID = 443406275716579348  # Twój discord user ID
 CHANNEL_PRIVACY_FILE = "txt/channel_privacy_settings.json"
 
-
 def load_channel_privacy():
     """Ładuje ustawienia prywatności kanałów"""
     try:
