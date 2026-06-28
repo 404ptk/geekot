@@ -15,6 +15,7 @@ from daily_guard import (
     mark_sent_today,
     today_str,
 )
+from jobs.permissions import has_high_tier_guard
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 TXT_DIR = PROJECT_ROOT / "txt"
@@ -29,6 +30,11 @@ USER_AGENT = {
 }
 CONSENT_COOKIES = {"CONSENT": "YES+1"}
 DAILY_EMBED_MARKER = "YouTube Shorts"
+
+EXTRA_CHANNELS = [
+    {"key": "jarrobeats", "url": "https://www.youtube.com/@jarrobeats"},
+    {"key": "jarrogra", "url": "https://www.youtube.com/@jarrogra"},
+]
 
 CLIENT_REF: Optional[discord.Client] = None
 
@@ -197,15 +203,21 @@ def save_daily_snapshot(stats: Dict[str, Any], date_str: str) -> None:
     save_state(state)
 
 
-def apply_daily_comparison(stats: Dict[str, Any], reference_date: Optional[str] = None) -> Dict[str, Any]:
-    state = load_state()
-    snapshots = state.get("snapshots", {})
+def apply_daily_comparison(
+    stats: Dict[str, Any],
+    reference_date: Optional[str] = None,
+    snapshots: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    if snapshots is None:
+        state = load_state()
+        snapshots = state.get("snapshots", {})
     today_str = reference_date or datetime.now().strftime("%Y-%m-%d")
 
     previous = find_previous_snapshot(snapshots, today_str)
     if not previous:
         stats["comparison"] = None
         stats["top_3_growth"] = []
+        stats["top_growth"] = None
         stats["total_views_delta"] = None
         return stats
 
@@ -225,11 +237,13 @@ def apply_daily_comparison(stats: Dict[str, Any], reference_date: Optional[str] 
             video["is_new"] = False
 
     stats["total_views_delta"] = sum(video["views_delta"] for video in stats["videos"])
-    stats["top_3_growth"] = sorted(
+    sorted_growth = sorted(
         stats["videos"],
         key=lambda video: video["views_delta"],
         reverse=True,
-    )[:3]
+    )
+    stats["top_3_growth"] = sorted_growth[:3]
+    stats["top_growth"] = sorted_growth[0] if sorted_growth else None
     stats["comparison"] = {"previous_date": prev_date}
     return stats
 
@@ -294,13 +308,18 @@ def get_recent_videos(
     result = []
     for video in videos[:limit]:
         snippet = video.get("snippet", {})
-        stats = video.get("statistics", {})
+        video_stats = video.get("statistics", {})
+        video_id = video["id"]
+        if shorts_only:
+            video_url = f"https://www.youtube.com/shorts/{video_id}"
+        else:
+            video_url = f"https://www.youtube.com/watch?v={video_id}"
         result.append(
             {
-                "video_id": video["id"],
+                "video_id": video_id,
                 "title": snippet.get("title", "Bez tytułu"),
-                "url": f"https://www.youtube.com/shorts/{video['id']}",
-                "views": int(stats.get("viewCount", 0)),
+                "url": video_url,
+                "views": int(video_stats.get("viewCount", 0)),
                 "published_at": snippet.get("publishedAt"),
             }
         )
@@ -363,6 +382,102 @@ def fetch_shorts_stats_with_comparison(
     return apply_daily_comparison(stats, reference_date=reference_date)
 
 
+def _get_extra_channel_snapshots(channel_key: str) -> Dict[str, Any]:
+    state = load_state()
+    return state.get("extra_snapshots", {}).get(channel_key, {})
+
+
+def save_extra_channel_snapshot(channel_key: str, stats: Dict[str, Any], date_str: str) -> None:
+    state = load_state()
+    extra_snapshots = state.setdefault("extra_snapshots", {})
+    snapshots = extra_snapshots.setdefault(channel_key, {})
+    snapshots[date_str] = {
+        "total_views": stats["total_views"],
+        "videos": {
+            video["video_id"]: {"views": video["views"], "title": video["title"]}
+            for video in stats["videos"]
+        },
+    }
+    _prune_snapshots(snapshots)
+    save_state(state)
+
+
+def fetch_channel_stats(
+    youtube_url: str,
+    api_key: str,
+    limit: int = 20,
+    shorts_only: bool = False,
+    channel_key: Optional[str] = None,
+) -> Dict[str, Any]:
+    state = load_state()
+    channel_id = state.get("extra_channel_ids", {}).get(channel_key) if channel_key else None
+    if not channel_id:
+        channel_id = resolve_channel_id(youtube_url, api_key=api_key)
+    if not channel_id:
+        raise RuntimeError(f"Nie udało się ustalić channel_id dla {youtube_url}")
+
+    if channel_key:
+        extra_ids = state.setdefault("extra_channel_ids", {})
+        extra_ids[channel_key] = channel_id
+        save_state(state)
+    elif not state.get("resolved_channel_id"):
+        state["resolved_channel_id"] = channel_id
+        save_state(state)
+
+    uploads_playlist_id, channel_title = get_uploads_playlist_id(channel_id, api_key)
+    videos = get_recent_videos(
+        uploads_playlist_id,
+        api_key,
+        limit=limit,
+        shorts_only=shorts_only,
+    )
+    if not videos:
+        raise RuntimeError(f"Nie znaleziono filmów na kanale {youtube_url}.")
+
+    return {
+        "channel_id": channel_id,
+        "channel_title": channel_title,
+        "channel_url": youtube_url,
+        "video_count": len(videos),
+        "total_views": sum(video["views"] for video in videos),
+        "videos": videos,
+    }
+
+
+def fetch_extra_channels_stats_with_comparison(
+    reference_date: Optional[str] = None,
+    limit: int = 20,
+) -> List[Dict[str, Any]]:
+    api_key = load_api_key()
+    if not api_key:
+        return []
+
+    results = []
+    for channel in EXTRA_CHANNELS:
+        try:
+            stats = fetch_channel_stats(
+                channel["url"],
+                api_key,
+                limit=limit,
+                shorts_only=False,
+                channel_key=channel["key"],
+            )
+            stats["channel_key"] = channel["key"]
+            snapshots = _get_extra_channel_snapshots(channel["key"])
+            apply_daily_comparison(stats, reference_date=reference_date, snapshots=snapshots)
+            results.append(stats)
+        except Exception as e:
+            print(f"[YT Shorts] Extra channel fetch failed for {channel['url']}: {e}")
+    return results
+
+
+def save_extra_channels_snapshots(channels_stats: List[Dict[str, Any]], date_str: str) -> None:
+    for stats in channels_stats:
+        channel_key = stats.get("channel_key")
+        if channel_key:
+            save_extra_channel_snapshot(channel_key, stats, date_str)
+
+
 def build_stats_embed(stats: Dict[str, Any]) -> discord.Embed:
     comparison = stats.get("comparison")
     total_delta = stats.get("total_views_delta")
@@ -419,6 +534,45 @@ def build_stats_embed(stats: Dict[str, Any]) -> discord.Embed:
     return embed
 
 
+def _truncate_title(title: str, max_len: int = 55) -> str:
+    if len(title) <= max_len:
+        return title
+    return title[: max_len - 3] + "..."
+
+
+def build_extra_channels_embed(channels_stats: List[Dict[str, Any]]) -> Optional[discord.Embed]:
+    if not channels_stats:
+        return None
+
+    lines = []
+    for stats in channels_stats:
+        title = stats["channel_title"]
+        total_delta = stats.get("total_views_delta")
+        if total_delta is not None:
+            line = f"**{title}** — {format_delta(total_delta)}"
+        else:
+            line = f"**{title}** — _pierwszy pomiar_"
+
+        top_video = stats.get("top_growth")
+        if top_video and total_delta is not None:
+            video_title = _truncate_title(top_video["title"])
+            new_badge = " 🆕" if top_video.get("is_new") else ""
+            line += (
+                f"\n▸ [{video_title}]({top_video['url']}){new_badge} "
+                f"**{format_delta(top_video['views_delta'])}**"
+            )
+        lines.append(line)
+
+    embed = discord.Embed(
+        title="📊 Jarro — statystyki dobowe",
+        description="\n\n".join(lines),
+        color=discord.Color.blue(),
+        timestamp=datetime.now(),
+    )
+    embed.set_footer(text="YouTube Data API • ostatnie 20 filmów na kanał")
+    return embed
+
+
 async def run_daily_stats_if_due(client: discord.Client) -> None:
     config = load_config()
     channel_id = config.get("discord_channel_id")
@@ -450,6 +604,12 @@ async def run_daily_stats_if_due(client: discord.Client) -> None:
         print(f"[YT Shorts] Daily fetch failed: {e}")
         return
 
+    video_limit = int(config.get("video_count", 20))
+    extra_stats = fetch_extra_channels_stats_with_comparison(
+        reference_date=today,
+        limit=video_limit,
+    )
+
     channel = client.get_channel(int(channel_id))
     if not channel:
         try:
@@ -460,15 +620,20 @@ async def run_daily_stats_if_due(client: discord.Client) -> None:
         print(f"[YT Shorts] Cannot find Discord channel {channel_id}")
         return
 
-    embed = build_stats_embed(stats)
+    embeds = [build_stats_embed(stats)]
+    extra_embed = build_extra_channels_embed(extra_stats)
+    if extra_embed:
+        embeds.append(extra_embed)
+
     try:
-        await channel.send(embed=embed)
+        await channel.send(embeds=embeds)
         print(f"[YT Shorts] Posted daily stats to #{channel_id}")
     except Exception as e:
         print(f"[YT Shorts] Failed to post daily stats: {e}")
         return
 
     save_daily_snapshot(stats, today)
+    save_extra_channels_snapshots(extra_stats, today)
     state = load_state()
     state["last_run_date"] = today
     save_state(state)
@@ -496,13 +661,25 @@ async def setup_youtube_shorts(
         guild=guild,
     )
     async def ytshorts(interaction: discord.Interaction):
+        if not has_high_tier_guard(interaction.user):
+            await interaction.response.send_message(
+                "Nie masz wystarczających uprawnień do wykonania tej komendy.",
+                ephemeral=True,
+            )
+            return
+
         await interaction.response.defer()
         try:
-            stats = fetch_shorts_stats_with_comparison()
-            embed = build_stats_embed(stats)
-            await interaction.followup.send(embed=embed)
-
             config = load_config()
+            video_limit = int(config.get("video_count", 20))
+            stats = fetch_shorts_stats_with_comparison()
+            extra_stats = fetch_extra_channels_stats_with_comparison(limit=video_limit)
+            embeds = [build_stats_embed(stats)]
+            extra_embed = build_extra_channels_embed(extra_stats)
+            if extra_embed:
+                embeds.append(extra_embed)
+            await interaction.followup.send(embeds=embeds)
+
             daily_channel_id = config.get("discord_channel_id")
             offset_hours = int(config.get("send_offset_hours", 0))
             if daily_channel_id and interaction.channel_id == int(daily_channel_id):
