@@ -253,7 +253,16 @@ def _is_short_video(video: Dict[str, Any], max_seconds: int = 60) -> bool:
     return 0 < _parse_iso8601_duration(duration) <= max_seconds
 
 
-def get_uploads_playlist_id(channel_id: str, api_key: str) -> Tuple[str, str]:
+def _channel_thumbnail(snippet: Dict[str, Any]) -> str:
+    thumbnails = snippet.get("thumbnails", {})
+    for size in ("high", "medium", "default"):
+        url = thumbnails.get(size, {}).get("url")
+        if url:
+            return url
+    return ""
+
+
+def get_uploads_playlist_id(channel_id: str, api_key: str) -> Tuple[str, str, str]:
     data = _api_get(
         "channels",
         {"part": "contentDetails,snippet", "id": channel_id},
@@ -263,9 +272,10 @@ def get_uploads_playlist_id(channel_id: str, api_key: str) -> Tuple[str, str]:
     if not items:
         raise RuntimeError(f"Nie znaleziono kanału YouTube: {channel_id}")
     channel = items[0]
+    snippet = channel.get("snippet", {})
     uploads_id = channel["contentDetails"]["relatedPlaylists"]["uploads"]
-    channel_title = channel.get("snippet", {}).get("title", "YouTube")
-    return uploads_id, channel_title
+    channel_title = snippet.get("title", "YouTube")
+    return uploads_id, channel_title, _channel_thumbnail(snippet)
 
 
 def get_recent_videos(
@@ -352,7 +362,7 @@ def fetch_shorts_stats(config: Optional[Dict[str, Any]] = None) -> Dict[str, Any
     limit = int(config.get("video_count", 20))
     shorts_only = bool(config.get("shorts_only", False))
 
-    uploads_playlist_id, channel_title = get_uploads_playlist_id(channel_id, api_key)
+    uploads_playlist_id, channel_title, channel_thumbnail = get_uploads_playlist_id(channel_id, api_key)
     videos = get_recent_videos(
         uploads_playlist_id,
         api_key,
@@ -367,6 +377,7 @@ def fetch_shorts_stats(config: Optional[Dict[str, Any]] = None) -> Dict[str, Any
     return {
         "channel_id": channel_id,
         "channel_title": channel_title,
+        "channel_thumbnail": channel_thumbnail,
         "channel_url": youtube_url,
         "video_count": len(videos),
         "total_views": total_views,
@@ -424,7 +435,7 @@ def fetch_channel_stats(
         state["resolved_channel_id"] = channel_id
         save_state(state)
 
-    uploads_playlist_id, channel_title = get_uploads_playlist_id(channel_id, api_key)
+    uploads_playlist_id, channel_title, channel_thumbnail = get_uploads_playlist_id(channel_id, api_key)
     videos = get_recent_videos(
         uploads_playlist_id,
         api_key,
@@ -437,6 +448,7 @@ def fetch_channel_stats(
     return {
         "channel_id": channel_id,
         "channel_title": channel_title,
+        "channel_thumbnail": channel_thumbnail,
         "channel_url": youtube_url,
         "video_count": len(videos),
         "total_views": sum(video["views"] for video in videos),
@@ -527,9 +539,8 @@ def build_stats_embed(stats: Dict[str, Any]) -> discord.Embed:
         inline=False,
     )
 
-    thumb_video = stats.get("top_3_growth", [{}])[0] if stats.get("top_3_growth") else stats.get("videos", [{}])[0]
-    if thumb_video.get("video_id"):
-        embed.set_thumbnail(url=f"https://i.ytimg.com/vi/{thumb_video['video_id']}/hqdefault.jpg")
+    if stats.get("channel_thumbnail"):
+        embed.set_thumbnail(url=stats["channel_thumbnail"])
     embed.set_footer(text="YouTube Data API • porównanie ze snapshotem z poprzedniej doby")
     return embed
 
@@ -569,6 +580,10 @@ def build_extra_channels_embed(channels_stats: List[Dict[str, Any]]) -> Optional
         color=discord.Color.blue(),
         timestamp=datetime.now(),
     )
+    for stats in channels_stats:
+        if stats.get("channel_key") == "jarrobeats" and stats.get("channel_thumbnail"):
+            embed.set_thumbnail(url=stats["channel_thumbnail"])
+            break
     embed.set_footer(text="YouTube Data API • ostatnie 20 filmów na kanał")
     return embed
 
