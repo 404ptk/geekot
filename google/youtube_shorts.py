@@ -134,7 +134,6 @@ def resolve_channel_id(youtube_url: str, api_key: Optional[str] = None) -> Optio
             print(f"[YT Shorts] Resolve attempt failed for {url}: {e}")
     return None
 
-
 def _api_get(endpoint: str, params: Dict[str, Any], api_key: str) -> Dict[str, Any]:
     query = dict(params)
     query["key"] = api_key
