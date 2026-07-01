@@ -193,6 +193,7 @@ def save_daily_snapshot(stats: Dict[str, Any], date_str: str) -> None:
     snapshots = state.setdefault("snapshots", {})
     snapshots[date_str] = {
         "total_views": stats["total_views"],
+        "subscriber_count": stats.get("subscriber_count"),
         "videos": {
             video["video_id"]: {"views": video["views"], "title": video["title"]}
             for video in stats["videos"]
@@ -218,9 +219,17 @@ def apply_daily_comparison(
         stats["top_3_growth"] = []
         stats["top_growth"] = None
         stats["total_views_delta"] = None
+        stats["subscriber_count_delta"] = None
         return stats
 
     prev_date, prev_data = previous
+    prev_subscriber_count = prev_data.get("subscriber_count")
+    subscriber_count = stats.get("subscriber_count")
+    if subscriber_count is not None and prev_subscriber_count is not None:
+        stats["subscriber_count_delta"] = subscriber_count - prev_subscriber_count
+    else:
+        stats["subscriber_count_delta"] = None
+
     prev_views_map = {
         video_id: video["views"]
         for video_id, video in prev_data.get("videos", {}).items()
@@ -261,10 +270,22 @@ def _channel_thumbnail(snippet: Dict[str, Any]) -> str:
     return ""
 
 
-def get_uploads_playlist_id(channel_id: str, api_key: str) -> Tuple[str, str, str]:
+def _subscriber_count(statistics: Dict[str, Any]) -> Optional[int]:
+    if statistics.get("hiddenSubscriberCount"):
+        return None
+    value = statistics.get("subscriberCount")
+    if value is None:
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def get_uploads_playlist_id(channel_id: str, api_key: str) -> Tuple[str, str, str, Optional[int]]:
     data = _api_get(
         "channels",
-        {"part": "contentDetails,snippet", "id": channel_id},
+        {"part": "contentDetails,snippet,statistics", "id": channel_id},
         api_key,
     )
     items = data.get("items", [])
@@ -272,9 +293,10 @@ def get_uploads_playlist_id(channel_id: str, api_key: str) -> Tuple[str, str, st
         raise RuntimeError(f"Nie znaleziono kanału YouTube: {channel_id}")
     channel = items[0]
     snippet = channel.get("snippet", {})
+    statistics = channel.get("statistics", {})
     uploads_id = channel["contentDetails"]["relatedPlaylists"]["uploads"]
     channel_title = snippet.get("title", "YouTube")
-    return uploads_id, channel_title, _channel_thumbnail(snippet)
+    return uploads_id, channel_title, _channel_thumbnail(snippet), _subscriber_count(statistics)
 
 
 def get_recent_videos(
@@ -361,7 +383,7 @@ def fetch_shorts_stats(config: Optional[Dict[str, Any]] = None) -> Dict[str, Any
     limit = int(config.get("video_count", 20))
     shorts_only = bool(config.get("shorts_only", False))
 
-    uploads_playlist_id, channel_title, channel_thumbnail = get_uploads_playlist_id(channel_id, api_key)
+    uploads_playlist_id, channel_title, channel_thumbnail, subscriber_count = get_uploads_playlist_id(channel_id, api_key)
     videos = get_recent_videos(
         uploads_playlist_id,
         api_key,
@@ -378,6 +400,7 @@ def fetch_shorts_stats(config: Optional[Dict[str, Any]] = None) -> Dict[str, Any
         "channel_title": channel_title,
         "channel_thumbnail": channel_thumbnail,
         "channel_url": youtube_url,
+        "subscriber_count": subscriber_count,
         "video_count": len(videos),
         "total_views": total_views,
         "videos": videos,
@@ -403,6 +426,7 @@ def save_extra_channel_snapshot(channel_key: str, stats: Dict[str, Any], date_st
     snapshots = extra_snapshots.setdefault(channel_key, {})
     snapshots[date_str] = {
         "total_views": stats["total_views"],
+        "subscriber_count": stats.get("subscriber_count"),
         "videos": {
             video["video_id"]: {"views": video["views"], "title": video["title"]}
             for video in stats["videos"]
@@ -434,7 +458,7 @@ def fetch_channel_stats(
         state["resolved_channel_id"] = channel_id
         save_state(state)
 
-    uploads_playlist_id, channel_title, channel_thumbnail = get_uploads_playlist_id(channel_id, api_key)
+    uploads_playlist_id, channel_title, channel_thumbnail, subscriber_count = get_uploads_playlist_id(channel_id, api_key)
     videos = get_recent_videos(
         uploads_playlist_id,
         api_key,
@@ -449,6 +473,7 @@ def fetch_channel_stats(
         "channel_title": channel_title,
         "channel_thumbnail": channel_thumbnail,
         "channel_url": youtube_url,
+        "subscriber_count": subscriber_count,
         "video_count": len(videos),
         "total_views": sum(video["views"] for video in videos),
         "videos": videos,
@@ -492,9 +517,13 @@ def save_extra_channels_snapshots(channels_stats: List[Dict[str, Any]], date_str
 def build_stats_embed(stats: Dict[str, Any]) -> discord.Embed:
     comparison = stats.get("comparison")
     total_delta = stats.get("total_views_delta")
+    subscriber_count = stats.get("subscriber_count")
+    subscriber_delta = stats.get("subscriber_count_delta")
+    prev_date = None
+    if comparison:
+        prev_date = datetime.strptime(comparison["previous_date"], "%Y-%m-%d").strftime("%d.%m.%Y")
 
     if comparison and total_delta is not None:
-        prev_date = datetime.strptime(comparison["previous_date"], "%Y-%m-%d").strftime("%d.%m.%Y")
         total_value = (
             f"**{format_views(stats['total_views'])}** łącznie\n"
             f"**{format_delta(total_delta)}** od {prev_date}"
@@ -502,6 +531,19 @@ def build_stats_embed(stats: Dict[str, Any]) -> discord.Embed:
     else:
         total_value = (
             f"**{format_views(stats['total_views'])}** łącznie\n"
+            "_Pierwszy pomiar — jutro pojawi się porównanie doby._"
+        )
+
+    if subscriber_count is None:
+        subscriber_value = "_Liczba subskrybentów jest ukryta lub niedostępna._"
+    elif prev_date and subscriber_delta is not None:
+        subscriber_value = (
+            f"**{format_views(subscriber_count)}** łącznie\n"
+            f"**{format_delta(subscriber_delta)}** od {prev_date}"
+        )
+    else:
+        subscriber_value = (
+            f"**{format_views(subscriber_count)}** łącznie\n"
             "_Pierwszy pomiar — jutro pojawi się porównanie doby._"
         )
 
@@ -533,6 +575,11 @@ def build_stats_embed(stats: Dict[str, Any]) -> discord.Embed:
         inline=False,
     )
     embed.add_field(
+        name="Subskrybenci",
+        value=subscriber_value,
+        inline=False,
+    )
+    embed.add_field(
         name="Top 3 wzrostu w ciągu doby",
         value="\n".join(growth_lines) if growth_lines else "_Brak danych porównawczych._",
         inline=False,
@@ -558,10 +605,25 @@ def build_extra_channels_embed(channels_stats: List[Dict[str, Any]]) -> Optional
     for stats in channels_stats:
         title = stats["channel_title"]
         total_delta = stats.get("total_views_delta")
+        subscriber_count = stats.get("subscriber_count")
+        subscriber_delta = stats.get("subscriber_count_delta")
         if total_delta is not None:
             line = f"**{title}** — {format_delta(total_delta)}"
         else:
             line = f"**{title}** — _pierwszy pomiar_"
+
+        if subscriber_count is None:
+            line += "\n▸ Subskrybenci: _ukryte lub niedostępne_"
+        elif subscriber_delta is not None:
+            line += (
+                f"\n▸ Subskrybenci: **{format_views(subscriber_count)}** "
+                f"({format_delta(subscriber_delta)})"
+            )
+        else:
+            line += (
+                f"\n▸ Subskrybenci: **{format_views(subscriber_count)}** "
+                "(_pierwszy pomiar_)"
+            )
 
         top_video = stats.get("top_growth")
         if top_video and total_delta is not None:
@@ -713,6 +775,17 @@ async def setup_youtube_shorts(
 def _print_cli_summary(stats: Dict[str, Any]) -> None:
     print(f"\nKanał: {stats['channel_title']}")
     print(f"Łącznie wyświetleń (20 ostatnich): {format_views(stats['total_views'])}")
+    subscriber_count = stats.get("subscriber_count")
+    subscriber_delta = stats.get("subscriber_count_delta")
+    if subscriber_count is None:
+        print("Subskrybenci: ukryte lub niedostępne")
+    elif subscriber_delta is not None:
+        print(
+            f"Subskrybenci: {format_views(subscriber_count)} "
+            f"({format_delta(subscriber_delta)} od poprzedniego pomiaru)"
+        )
+    else:
+        print(f"Subskrybenci: {format_views(subscriber_count)} (pierwszy pomiar)")
 
     if stats.get("comparison") and stats.get("total_views_delta") is not None:
         prev_date = stats["comparison"]["previous_date"]
