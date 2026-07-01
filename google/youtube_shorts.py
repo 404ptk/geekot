@@ -525,8 +525,7 @@ def build_stats_embed(stats: Dict[str, Any]) -> discord.Embed:
 
     if comparison and total_delta is not None:
         total_value = (
-            f"**{format_views(stats['total_views'])}** łącznie\n"
-            f"**{format_delta(total_delta)}** od {prev_date}"
+            f"**{format_views(stats['total_views'])}** ({format_delta(total_delta)})\n"
         )
     else:
         total_value = (
@@ -538,8 +537,7 @@ def build_stats_embed(stats: Dict[str, Any]) -> discord.Embed:
         subscriber_value = "_Liczba subskrybentów jest ukryta lub niedostępna._"
     elif prev_date and subscriber_delta is not None:
         subscriber_value = (
-            f"**{format_views(subscriber_count)}** łącznie\n"
-            f"**{format_delta(subscriber_delta)}** od {prev_date}"
+            f"**{format_views(subscriber_count)}** ({format_delta(subscriber_delta)})\n"
         )
     else:
         subscriber_value = (
@@ -562,11 +560,11 @@ def build_stats_embed(stats: Dict[str, Any]) -> discord.Embed:
         )
 
     embed = discord.Embed(
-        title="📊 YouTube Shorts — statystyki dobowe",
-        description=(
-            f"Kanał: **{stats['channel_title']}**\n"
-        ),
-        color=discord.Color.red(),
+        title="📊 Nisza Kickowa — statystyki dobowe",
+        # description=(
+        #     f"Kanał: **{stats['channel_title']}**\n"
+        # ),
+        color=discord.Color.green(),
         timestamp=datetime.now(),
     )
     embed.add_field(
@@ -575,7 +573,7 @@ def build_stats_embed(stats: Dict[str, Any]) -> discord.Embed:
         inline=False,
     )
     embed.add_field(
-        name="Subskrybenci",
+        name="Suby",
         value=subscriber_value,
         inline=False,
     )
@@ -587,7 +585,7 @@ def build_stats_embed(stats: Dict[str, Any]) -> discord.Embed:
 
     if stats.get("channel_thumbnail"):
         embed.set_thumbnail(url=stats["channel_thumbnail"])
-    embed.set_footer(text="YouTube Data API • porównanie ze snapshotem z poprzedniej doby")
+    embed.set_footer(text="YouTube Data API • porównanie względem poprzedniego dnia")
     return embed
 
 
@@ -613,15 +611,14 @@ def build_extra_channels_embed(channels_stats: List[Dict[str, Any]]) -> Optional
             line = f"**{title}** — _pierwszy pomiar_"
 
         if subscriber_count is None:
-            line += "\n▸ Subskrybenci: _ukryte lub niedostępne_"
+            line += "\n▸ Suby: _ukryte lub niedostępne_"
         elif subscriber_delta is not None:
             line += (
-                f"\n▸ Subskrybenci: **{format_views(subscriber_count)}** "
-                f"({format_delta(subscriber_delta)})"
+                f"\n▸ Suby: **{format_views(subscriber_count)} ({format_delta(subscriber_delta)})**"
             )
         else:
             line += (
-                f"\n▸ Subskrybenci: **{format_views(subscriber_count)}** "
+                f"\n▸ Suby: **{format_views(subscriber_count)}** "
                 "(_pierwszy pomiar_)"
             )
 
@@ -636,16 +633,16 @@ def build_extra_channels_embed(channels_stats: List[Dict[str, Any]]) -> Optional
         lines.append(line)
 
     embed = discord.Embed(
-        title="📊 Jarro — statystyki dobowe",
+        title="🎵 jarro — statystyki dobowe",
         description="\n\n".join(lines),
-        color=discord.Color.blue(),
+        color=discord.Color.purple(),
         timestamp=datetime.now(),
     )
     for stats in channels_stats:
         if stats.get("channel_key") == "jarrobeats" and stats.get("channel_thumbnail"):
             embed.set_thumbnail(url=stats["channel_thumbnail"])
             break
-    embed.set_footer(text="YouTube Data API • ostatnie 20 filmów na kanał")
+    embed.set_footer(text="YouTube Data API • porównanie względem poprzedniego dnia")
     return embed
 
 
@@ -733,7 +730,7 @@ async def setup_youtube_shorts(
 
     @tree.command(
         name="ytshorts",
-        description="Statystyki YouTube Shorts z porównaniem do poprzedniej doby",
+        description="Statystyki YouTube z porównaniem do poprzedniej doby",
         guild=guild,
     )
     async def ytshorts(interaction: discord.Interaction):
@@ -773,19 +770,17 @@ async def setup_youtube_shorts(
 
 
 def _print_cli_summary(stats: Dict[str, Any]) -> None:
-    print(f"\nKanał: {stats['channel_title']}")
     print(f"Łącznie wyświetleń (20 ostatnich): {format_views(stats['total_views'])}")
     subscriber_count = stats.get("subscriber_count")
     subscriber_delta = stats.get("subscriber_count_delta")
     if subscriber_count is None:
-        print("Subskrybenci: ukryte lub niedostępne")
+        print("Suby: ukryte lub niedostępne")
     elif subscriber_delta is not None:
         print(
-            f"Subskrybenci: {format_views(subscriber_count)} "
-            f"({format_delta(subscriber_delta)} od poprzedniego pomiaru)"
+            f"Suby: {format_views(subscriber_count)} ({format_delta(subscriber_delta)}) "
         )
     else:
-        print(f"Subskrybenci: {format_views(subscriber_count)} (pierwszy pomiar)")
+        print(f"Suby: {format_views(subscriber_count)} (pierwszy pomiar)")
 
     if stats.get("comparison") and stats.get("total_views_delta") is not None:
         prev_date = stats["comparison"]["previous_date"]
