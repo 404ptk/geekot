@@ -191,14 +191,22 @@ def find_previous_snapshot(snapshots: Dict[str, Any], before_date: str) -> Optio
 def save_daily_snapshot(stats: Dict[str, Any], date_str: str) -> None:
     state = load_state()
     snapshots = state.setdefault("snapshots", {})
-    snapshots[date_str] = {
+    snapshot = {
         "total_views": stats["total_views"],
+        "channel_total_views": stats.get("channel_total_views"),
         "subscriber_count": stats.get("subscriber_count"),
         "videos": {
             video["video_id"]: {"views": video["views"], "title": video["title"]}
             for video in stats["videos"]
         },
     }
+    all_videos = stats.get("all_videos")
+    if all_videos:
+        snapshot["all_videos"] = {
+            video["video_id"]: {"views": video["views"], "title": video["title"]}
+            for video in all_videos
+        }
+    snapshots[date_str] = snapshot
     _prune_snapshots(snapshots)
     save_state(state)
 
@@ -217,8 +225,10 @@ def apply_daily_comparison(
     if not previous:
         stats["comparison"] = None
         stats["top_3_growth"] = []
-        stats["top_growth"] = None
+        stats["top_growth"] = []
+        stats["top_outside_growth"] = None
         stats["total_views_delta"] = None
+        stats["channel_total_views_delta"] = None
         stats["subscriber_count_delta"] = None
         return stats
 
@@ -229,6 +239,13 @@ def apply_daily_comparison(
         stats["subscriber_count_delta"] = subscriber_count - prev_subscriber_count
     else:
         stats["subscriber_count_delta"] = None
+
+    prev_channel_total_views = prev_data.get("channel_total_views")
+    channel_total_views = stats.get("channel_total_views")
+    if channel_total_views is not None and prev_channel_total_views is not None:
+        stats["channel_total_views_delta"] = channel_total_views - prev_channel_total_views
+    else:
+        stats["channel_total_views_delta"] = None
 
     prev_views_map = {
         video_id: video["views"]
@@ -251,9 +268,49 @@ def apply_daily_comparison(
         reverse=True,
     )
     stats["top_3_growth"] = sorted_growth[:3]
-    stats["top_growth"] = sorted_growth[0] if sorted_growth else None
+    stats["top_growth"] = [
+        video for video in sorted_growth if video.get("views_delta", 0) != 0
+    ][:3]
+
+    top_3_ids = {video["video_id"] for video in stats["top_3_growth"]}
+    stats["top_outside_growth"] = _find_top_outside_growth(
+        stats.get("all_videos", []),
+        prev_data.get("all_videos", {}),
+        exclude_ids=top_3_ids,
+    )
     stats["comparison"] = {"previous_date": prev_date}
     return stats
+
+
+def _find_top_outside_growth(
+    all_videos: List[Dict[str, Any]],
+    prev_all_videos: Dict[str, Any],
+    exclude_ids: set,
+) -> Optional[Dict[str, Any]]:
+    if not all_videos or not prev_all_videos:
+        return None
+
+    best_video = None
+    best_delta = 0
+    for video in all_videos:
+        if video["video_id"] in exclude_ids:
+            continue
+        prev_entry = prev_all_videos.get(video["video_id"])
+        if prev_entry is None:
+            views_delta = video["views"]
+            is_new = True
+        else:
+            views_delta = video["views"] - prev_entry["views"]
+            is_new = False
+        if views_delta <= 0 or views_delta <= best_delta:
+            continue
+        best_delta = views_delta
+        best_video = {
+            **video,
+            "views_delta": views_delta,
+            "is_new": is_new,
+        }
+    return best_video
 
 
 def _is_short_video(video: Dict[str, Any], max_seconds: int = 60) -> bool:
@@ -282,7 +339,19 @@ def _subscriber_count(statistics: Dict[str, Any]) -> Optional[int]:
         return None
 
 
-def get_uploads_playlist_id(channel_id: str, api_key: str) -> Tuple[str, str, str, Optional[int]]:
+def _channel_view_count(statistics: Dict[str, Any]) -> Optional[int]:
+    value = statistics.get("viewCount")
+    if value is None:
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def get_uploads_playlist_id(
+    channel_id: str, api_key: str
+) -> Tuple[str, str, str, Optional[int], Optional[int]]:
     data = _api_get(
         "channels",
         {"part": "contentDetails,snippet,statistics", "id": channel_id},
@@ -296,7 +365,13 @@ def get_uploads_playlist_id(channel_id: str, api_key: str) -> Tuple[str, str, st
     statistics = channel.get("statistics", {})
     uploads_id = channel["contentDetails"]["relatedPlaylists"]["uploads"]
     channel_title = snippet.get("title", "YouTube")
-    return uploads_id, channel_title, _channel_thumbnail(snippet), _subscriber_count(statistics)
+    return (
+        uploads_id,
+        channel_title,
+        _channel_thumbnail(snippet),
+        _subscriber_count(statistics),
+        _channel_view_count(statistics),
+    )
 
 
 def get_recent_videos(
@@ -357,6 +432,75 @@ def get_recent_videos(
     return result
 
 
+def _get_all_playlist_video_ids(uploads_playlist_id: str, api_key: str) -> List[str]:
+    video_ids: List[str] = []
+    page_token = None
+    while True:
+        params: Dict[str, Any] = {
+            "part": "snippet",
+            "playlistId": uploads_playlist_id,
+            "maxResults": 50,
+        }
+        if page_token:
+            params["pageToken"] = page_token
+        playlist_data = _api_get("playlistItems", params, api_key)
+        for item in playlist_data.get("items", []):
+            video_id = item.get("snippet", {}).get("resourceId", {}).get("videoId")
+            if video_id:
+                video_ids.append(video_id)
+        page_token = playlist_data.get("nextPageToken")
+        if not page_token:
+            break
+    return video_ids
+
+
+def _video_stats_to_entry(
+    video: Dict[str, Any],
+    shorts_only: bool = False,
+) -> Optional[Dict[str, Any]]:
+    snippet = video.get("snippet", {})
+    video_stats = video.get("statistics", {})
+    video_id = video["id"]
+    if shorts_only and not _is_short_video(video):
+        return None
+    if shorts_only:
+        video_url = f"https://www.youtube.com/shorts/{video_id}"
+    else:
+        video_url = f"https://www.youtube.com/watch?v={video_id}"
+    return {
+        "video_id": video_id,
+        "title": snippet.get("title", "Bez tytułu"),
+        "url": video_url,
+        "views": int(video_stats.get("viewCount", 0)),
+        "published_at": snippet.get("publishedAt"),
+    }
+
+
+def get_all_videos(
+    uploads_playlist_id: str,
+    api_key: str,
+    shorts_only: bool = False,
+) -> List[Dict[str, Any]]:
+    video_ids = _get_all_playlist_video_ids(uploads_playlist_id, api_key)
+    if not video_ids:
+        return []
+
+    result: List[Dict[str, Any]] = []
+    for index in range(0, len(video_ids), 50):
+        chunk = video_ids[index : index + 50]
+        videos_data = _api_get(
+            "videos",
+            {"part": "statistics,snippet,contentDetails", "id": ",".join(chunk)},
+            api_key,
+        )
+        for video in videos_data.get("items", []):
+            entry = _video_stats_to_entry(video, shorts_only=shorts_only)
+            if entry:
+                result.append(entry)
+    result.sort(key=lambda video: video.get("published_at", ""), reverse=True)
+    return result
+
+
 def fetch_shorts_stats(config: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     config = config or load_config()
     api_key = load_api_key()
@@ -383,7 +527,7 @@ def fetch_shorts_stats(config: Optional[Dict[str, Any]] = None) -> Dict[str, Any
     limit = int(config.get("video_count", 20))
     shorts_only = bool(config.get("shorts_only", False))
 
-    uploads_playlist_id, channel_title, channel_thumbnail, subscriber_count = get_uploads_playlist_id(channel_id, api_key)
+    uploads_playlist_id, channel_title, channel_thumbnail, subscriber_count, channel_total_views = get_uploads_playlist_id(channel_id, api_key)
     videos = get_recent_videos(
         uploads_playlist_id,
         api_key,
@@ -393,6 +537,12 @@ def fetch_shorts_stats(config: Optional[Dict[str, Any]] = None) -> Dict[str, Any
     if not videos:
         raise RuntimeError("Nie znaleziono filmów na kanale.")
 
+    all_videos = get_all_videos(
+        uploads_playlist_id,
+        api_key,
+        shorts_only=shorts_only,
+    )
+
     total_views = sum(video["views"] for video in videos)
 
     return {
@@ -401,9 +551,11 @@ def fetch_shorts_stats(config: Optional[Dict[str, Any]] = None) -> Dict[str, Any
         "channel_thumbnail": channel_thumbnail,
         "channel_url": youtube_url,
         "subscriber_count": subscriber_count,
+        "channel_total_views": channel_total_views,
         "video_count": len(videos),
         "total_views": total_views,
         "videos": videos,
+        "all_videos": all_videos,
     }
 
 
@@ -458,7 +610,7 @@ def fetch_channel_stats(
         state["resolved_channel_id"] = channel_id
         save_state(state)
 
-    uploads_playlist_id, channel_title, channel_thumbnail, subscriber_count = get_uploads_playlist_id(channel_id, api_key)
+    uploads_playlist_id, channel_title, channel_thumbnail, subscriber_count, channel_total_views = get_uploads_playlist_id(channel_id, api_key)
     videos = get_recent_videos(
         uploads_playlist_id,
         api_key,
@@ -474,6 +626,7 @@ def fetch_channel_stats(
         "channel_thumbnail": channel_thumbnail,
         "channel_url": youtube_url,
         "subscriber_count": subscriber_count,
+        "channel_total_views": channel_total_views,
         "video_count": len(videos),
         "total_views": sum(video["views"] for video in videos),
         "videos": videos,
@@ -517,6 +670,8 @@ def save_extra_channels_snapshots(channels_stats: List[Dict[str, Any]], date_str
 def build_stats_embed(stats: Dict[str, Any]) -> discord.Embed:
     comparison = stats.get("comparison")
     total_delta = stats.get("total_views_delta")
+    channel_total_views = stats.get("channel_total_views")
+    channel_total_views_delta = stats.get("channel_total_views_delta")
     subscriber_count = stats.get("subscriber_count")
     subscriber_delta = stats.get("subscriber_count_delta")
     prev_date = None
@@ -524,21 +679,29 @@ def build_stats_embed(stats: Dict[str, Any]) -> discord.Embed:
         prev_date = datetime.strptime(comparison["previous_date"], "%Y-%m-%d").strftime("%d.%m.%Y")
 
     if comparison and total_delta is not None:
-        total_value = (
-            f"**{format_views(stats['total_views'])}** ({format_delta(total_delta)})\n"
-        )
+        total_value = f"**{format_views(stats['total_views'])}** ({format_delta(total_delta)})"
     else:
         total_value = (
             f"**{format_views(stats['total_views'])}** łącznie\n"
             "_Pierwszy pomiar — jutro pojawi się porównanie doby._"
         )
 
+    if channel_total_views is None:
+        channel_total_value = "_Ogólne wyświetlenia kanału są niedostępne._"
+    elif prev_date and channel_total_views_delta is not None:
+        channel_total_value = (
+            f"**{format_views(channel_total_views)}** ({format_delta(channel_total_views_delta)})"
+        )
+    else:
+        channel_total_value = (
+            f"**{format_views(channel_total_views)}** łącznie\n"
+            "_Pierwszy pomiar — jutro pojawi się porównanie doby._"
+        )
+
     if subscriber_count is None:
         subscriber_value = "_Liczba subskrybentów jest ukryta lub niedostępna._"
     elif prev_date and subscriber_delta is not None:
-        subscriber_value = (
-            f"**{format_views(subscriber_count)}** ({format_delta(subscriber_delta)})\n"
-        )
+        subscriber_value = f"**{format_views(subscriber_count)}** ({format_delta(subscriber_delta)})"
     else:
         subscriber_value = (
             f"**{format_views(subscriber_count)}** łącznie\n"
@@ -559,17 +722,35 @@ def build_stats_embed(stats: Dict[str, Any]) -> discord.Embed:
             f"_(łącznie {format_views(video['views'])})_"
         )
 
+    outside_growth = stats.get("top_outside_growth")
+    if outside_growth:
+        outside_title = outside_growth["title"]
+        if len(outside_title) > 70:
+            outside_title = outside_title[:67] + "..."
+        new_badge = " 🆕" if outside_growth.get("is_new") else ""
+        outside_value = (
+            f"[{outside_title}]({outside_growth['url']}){new_badge}\n"
+            f"**{format_delta(outside_growth['views_delta'])}** "
+            f"_(łącznie {format_views(outside_growth['views'])})_"
+        )
+    elif comparison:
+        outside_value = "_Brak wzrostu poza top 3 z ostatnich 20 filmów._"
+    else:
+        outside_value = "_Brak danych porównawczych._"
+
     embed = discord.Embed(
         title="📊 Nisza Kickowa — statystyki dobowe",
-        # description=(
-        #     f"Kanał: **{stats['channel_title']}**\n"
-        # ),
         color=discord.Color.green(),
         timestamp=datetime.now(),
     )
     embed.add_field(
         name="Wyświetlenia (ostatnie 20)",
         value=total_value,
+        inline=False,
+    )
+    embed.add_field(
+        name="Ogólne wyświetlenia kanału",
+        value=channel_total_value,
         inline=False,
     )
     embed.add_field(
@@ -580,6 +761,11 @@ def build_stats_embed(stats: Dict[str, Any]) -> discord.Embed:
     embed.add_field(
         name="Top 3 wzrostu w ciągu doby",
         value="\n".join(growth_lines) if growth_lines else "_Brak danych porównawczych._",
+        inline=False,
+    )
+    embed.add_field(
+        name="Największy skok spoza top 3",
+        value=outside_value,
         inline=False,
     )
 
@@ -622,8 +808,8 @@ def build_extra_channels_embed(channels_stats: List[Dict[str, Any]]) -> Optional
                 "(_pierwszy pomiar_)"
             )
 
-        top_video = stats.get("top_growth")
-        if top_video and total_delta is not None:
+        top_videos = stats.get("top_growth") or []
+        for top_video in top_videos:
             video_title = _truncate_title(top_video["title"])
             new_badge = " 🆕" if top_video.get("is_new") else ""
             line += (
@@ -771,6 +957,18 @@ async def setup_youtube_shorts(
 
 def _print_cli_summary(stats: Dict[str, Any]) -> None:
     print(f"Łącznie wyświetleń (20 ostatnich): {format_views(stats['total_views'])}")
+    channel_total_views = stats.get("channel_total_views")
+    channel_total_views_delta = stats.get("channel_total_views_delta")
+    if channel_total_views is None:
+        print("Ogólne wyświetlenia kanału: niedostępne")
+    elif channel_total_views_delta is not None:
+        print(
+            f"Ogólne wyświetlenia kanału: {format_views(channel_total_views)} "
+            f"({format_delta(channel_total_views_delta)})"
+        )
+    else:
+        print(f"Ogólne wyświetlenia kanału: {format_views(channel_total_views)} (pierwszy pomiar)")
+
     subscriber_count = stats.get("subscriber_count")
     subscriber_delta = stats.get("subscriber_count_delta")
     if subscriber_count is None:
@@ -793,6 +991,15 @@ def _print_cli_summary(stats: Dict[str, Any]) -> None:
                 f"{format_delta(video['views_delta'])} (łącznie {format_views(video['views'])})"
             )
             print(f"     {video['url']}")
+        outside_growth = stats.get("top_outside_growth")
+        if outside_growth:
+            new_tag = " [NOWY]" if outside_growth.get("is_new") else ""
+            print(
+                f"\nNajwiększy skok spoza top 3: {outside_growth['title']}{new_tag} — "
+                f"{format_delta(outside_growth['views_delta'])} "
+                f"(łącznie {format_views(outside_growth['views'])})"
+            )
+            print(f"     {outside_growth['url']}")
     else:
         print("\nBrak snapshotu z poprzedniej doby — uruchom jutro lub poczekaj na codzienny raport.")
 
