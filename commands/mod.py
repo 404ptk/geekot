@@ -100,6 +100,79 @@ async def setup_mod_commands(client: discord.Client, tree: discord.app_commands.
             f"Kanał {channel.mention} został przeniesiony do kategorii **{category.name}** i zablokowano możliwość pisania.\n✅ Ustawienia prywatności kanału zostały zapisane."
         )
 
+    # --- Czyszczenie wiadomości ---
+    @tree.command(
+        name="czysc",
+        description="Usuwa ostatnie wiadomości na bieżącym kanale",
+        guild=guild,
+    )
+    @discord.app_commands.describe(
+        liczba="Ile wiadomości usunąć (1-100)",
+        uzytkownik="Usuń ostatnie wiadomości tego użytkownika (opcjonalnie)",
+    )
+    async def czysc(
+        interaction: discord.Interaction,
+        liczba: discord.app_commands.Range[int, 1, 100],
+        uzytkownik: discord.Member = None,
+    ):
+        member = interaction.user
+        if not any(role.name.lower() == "high tier guard" for role in getattr(member, "roles", [])):
+            await interaction.response.send_message(
+                "Nie masz wystarczających uprawnień do wykonania tej komendy.",
+                ephemeral=True,
+            )
+            return
+
+        if not isinstance(interaction.channel, discord.TextChannel):
+            await interaction.response.send_message(
+                "Ta komenda działa tylko na kanałach tekstowych.",
+                ephemeral=True,
+            )
+            return
+
+        channel = interaction.channel
+        if not channel.permissions_for(interaction.guild.me).manage_messages:
+            await interaction.response.send_message(
+                "Bot nie ma uprawnienia do zarządzania wiadomościami na tym kanale.",
+                ephemeral=True,
+            )
+            return
+
+        await interaction.response.defer(ephemeral=True)
+
+        reason = f"Czyszczenie przez {interaction.user} ({interaction.user.id})"
+        try:
+            if uzytkownik:
+                matched = {"count": 0}
+
+                def check(message: discord.Message) -> bool:
+                    if message.author.id != uzytkownik.id:
+                        return False
+                    matched["count"] += 1
+                    return matched["count"] <= liczba
+
+                deleted = await channel.purge(limit=1000, check=check, reason=reason)
+                await interaction.followup.send(
+                    f"Usunięto **{len(deleted)}** wiadomości użytkownika {uzytkownik.mention} na {channel.mention}.",
+                    ephemeral=True,
+                )
+            else:
+                deleted = await channel.purge(limit=liczba, reason=reason)
+                await interaction.followup.send(
+                    f"Usunięto **{len(deleted)}** ostatnich wiadomości na {channel.mention}.",
+                    ephemeral=True,
+                )
+        except discord.Forbidden:
+            await interaction.followup.send(
+                "Nie udało się usunąć wiadomości — brak uprawnień.",
+                ephemeral=True,
+            )
+        except discord.HTTPException as e:
+            await interaction.followup.send(
+                f"Nie udało się usunąć wiadomości: {e}",
+                ephemeral=True,
+            )
+
     # --- Synchronizacja globalna ---
     @tree.command(
         name="sync",
