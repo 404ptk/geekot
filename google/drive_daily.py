@@ -358,8 +358,6 @@ def prepare_random_post(config: Optional[Dict[str, Any]] = None) -> Dict[str, An
 
 def build_memory_embed(post: Dict[str, Any]) -> discord.Embed:
     description = f"**{post['name']}**"
-    if post.get("converted_from_heic"):
-        description += "\n_(HEIC → JPG, żeby Discord wyświetlił podgląd)_"
     if post.get("reset_pool"):
         description += "\n_Kolekcja się skończyła — losujemy od nowa._"
 
