@@ -261,7 +261,16 @@ def apply_daily_comparison(
             video["views_delta"] = video["views"] - prev_views
             video["is_new"] = False
 
-    stats["total_views_delta"] = sum(video["views_delta"] for video in stats["videos"])
+    recent_total_delta = sum(video["views_delta"] for video in stats["videos"])
+    if stats.get("total_views_scope") == "all":
+        prev_total = prev_data.get("total_views")
+        cur_total = stats.get("total_views")
+        if isinstance(prev_total, int) and isinstance(cur_total, int):
+            stats["total_views_delta"] = cur_total - prev_total
+        else:
+            stats["total_views_delta"] = None
+    else:
+        stats["total_views_delta"] = recent_total_delta
     sorted_growth = sorted(
         stats["videos"],
         key=lambda video: video["views_delta"],
@@ -620,6 +629,12 @@ def fetch_channel_stats(
     if not videos:
         raise RuntimeError(f"Nie znaleziono filmów na kanale {youtube_url}.")
 
+    all_videos = get_all_videos(
+        uploads_playlist_id,
+        api_key,
+        shorts_only=shorts_only,
+    )
+
     return {
         "channel_id": channel_id,
         "channel_title": channel_title,
@@ -628,8 +643,10 @@ def fetch_channel_stats(
         "subscriber_count": subscriber_count,
         "channel_total_views": channel_total_views,
         "video_count": len(videos),
-        "total_views": sum(video["views"] for video in videos),
+        "total_views_scope": "all" if channel_key else "recent",
+        "total_views": sum(video["views"] for video in all_videos) if channel_key else sum(video["views"] for video in videos),
         "videos": videos,
+        "all_videos": all_videos,
     }
 
 
