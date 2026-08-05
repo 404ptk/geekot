@@ -36,10 +36,109 @@ ACCEPTED_IMAGE_EXTENSIONS = {
     ".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp", *HEIC_EXTENSIONS,
 }
 ACCEPTED_VIDEO_EXTENSIONS = {".mp4", ".webm", ".mov", ".avi", ".mkv", ".m4v"}
+# Folders matching this (case-insensitive) are half as likely to be explored.
+DOWNWEIGHTED_FOLDER_SUBSTRING = "energylandia"
+DOWNWEIGHTED_FOLDER_WEIGHT = 0.5
+# Exact folder path (relative to root) blocked for N days after use.
+ROUTE_COOLDOWN_DAYS = 3
+# Root-level folder exempt from route cooldown (whole subtree).
+ROUTE_COOLDOWN_EXEMPT_ROOT = "zdjecia"
 
 _heif_registered = False
 
 CLIENT_REF: Optional[discord.Client] = None
+
+
+def _is_downweighted_folder_name(name: str) -> bool:
+    return DOWNWEIGHTED_FOLDER_SUBSTRING in (name or "").lower()
+
+
+def _folder_pick_weight(folder: Dict[str, Any]) -> float:
+    if _is_downweighted_folder_name(folder.get("name", "")):
+        return DOWNWEIGHTED_FOLDER_WEIGHT
+    return 1.0
+
+
+def _weighted_folder_order(folders: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Order folders for exploration; downweighted names appear less often first."""
+    remaining = list(folders)
+    ordered: List[Dict[str, Any]] = []
+    while remaining:
+        weights = [_folder_pick_weight(folder) for folder in remaining]
+        chosen = random.choices(remaining, weights=weights, k=1)[0]
+        ordered.append(chosen)
+        remaining.remove(chosen)
+    return ordered
+
+
+def _normalize_route(path_parts: List[str]) -> str:
+    return "/".join(part for part in path_parts if part)
+
+
+def _route_key(route: str) -> str:
+    return (route or "").strip().lower()
+
+
+def _is_route_cooldown_exempt(route: str) -> bool:
+    """Exempt root folder 'zdjecia' and everything under it."""
+    if not route:
+        return False
+    first = route.split("/", 1)[0].strip().lower()
+    return first == ROUTE_COOLDOWN_EXEMPT_ROOT.lower()
+
+
+def _prune_recent_routes(
+    recent_routes: List[Dict[str, Any]],
+    today: Optional[datetime] = None,
+) -> List[Dict[str, Any]]:
+    today = today or datetime.now()
+    kept: List[Dict[str, Any]] = []
+    seen_keys: Set[str] = set()
+
+    for entry in recent_routes or []:
+        path = (entry or {}).get("path") or ""
+        date_str = (entry or {}).get("date") or ""
+        if not path or _is_route_cooldown_exempt(path):
+            continue
+        try:
+            used_on = datetime.strptime(date_str, "%Y-%m-%d")
+        except ValueError:
+            continue
+        age_days = (today.date() - used_on.date()).days
+        if age_days < 0 or age_days >= ROUTE_COOLDOWN_DAYS:
+            continue
+        key = _route_key(path)
+        if key in seen_keys:
+            continue
+        seen_keys.add(key)
+        kept.append({"path": path, "date": date_str})
+
+    return kept
+
+
+def get_blocked_routes(state: Optional[Dict[str, Any]] = None) -> Set[str]:
+    state = state if state is not None else load_state()
+    pruned = _prune_recent_routes(state.get("recent_routes", []))
+    return {_route_key(entry["path"]) for entry in pruned}
+
+
+def record_recent_route(state: Dict[str, Any], route: str) -> None:
+    if not route or _is_route_cooldown_exempt(route):
+        state["recent_routes"] = _prune_recent_routes(state.get("recent_routes", []))
+        return
+
+    today = datetime.now().strftime("%Y-%m-%d")
+    recent = _prune_recent_routes(state.get("recent_routes", []))
+    key = _route_key(route)
+    recent = [entry for entry in recent if _route_key(entry.get("path", "")) != key]
+    recent.append({"path": route, "date": today})
+    state["recent_routes"] = recent
+
+
+def _is_route_blocked(route: str, blocked_routes: Set[str]) -> bool:
+    if not route or _is_route_cooldown_exempt(route):
+        return False
+    return _route_key(route) in blocked_routes
 
 
 def _load_json(path: Path, default: Any) -> Any:
@@ -156,17 +255,31 @@ def _random_walk_pick(
     service,
     folder_id: str,
     sent_ids: Set[str],
+    blocked_routes: Optional[Set[str]] = None,
+    path_parts: Optional[List[str]] = None,
     depth: int = 0,
     max_depth: int = 20,
-) -> Optional[Dict[str, Any]]:
+) -> Optional[Tuple[Dict[str, Any], str]]:
+    """
+    Random-walk pick returning (file, route_path).
+    route_path is relative to the configured root (e.g. "bulgaria/dzien1").
+    """
     if depth > max_depth:
         return None
 
+    blocked_routes = blocked_routes or set()
+    path_parts = list(path_parts or [])
+    route = _normalize_route(path_parts)
+    route_blocked = _is_route_blocked(route, blocked_routes)
+
     children = list_folder_children(service, folder_id)
     folders = [item for item in children if item.get("mimeType") == FOLDER_MIME]
-    files = [item for item in children if is_eligible_media(item, sent_ids)]
+    files = (
+        []
+        if route_blocked
+        else [item for item in children if is_eligible_media(item, sent_ids)]
+    )
 
-    random.shuffle(folders)
     random.shuffle(files)
 
     if not folders and not files:
@@ -177,26 +290,27 @@ def _random_walk_pick(
     elif folders:
         explore_folder = True
     else:
-        return random.choice(files)
+        return random.choice(files), route
 
     if not explore_folder and files:
-        return random.choice(files)
+        return random.choice(files), route
 
     if folders:
-        random.shuffle(folders)
-        for folder in folders:
+        for folder in _weighted_folder_order(folders):
             found = _random_walk_pick(
                 service,
                 folder["id"],
                 sent_ids,
-                depth + 1,
-                max_depth,
+                blocked_routes=blocked_routes,
+                path_parts=path_parts + [folder.get("name", "")],
+                depth=depth + 1,
+                max_depth=max_depth,
             )
             if found:
                 return found
 
     if files:
-        return random.choice(files)
+        return random.choice(files), route
 
     return None
 
@@ -205,13 +319,14 @@ def collect_all_media(
     service,
     folder_id: str,
     sent_ids: Set[str],
-) -> List[Dict[str, Any]]:
-    found: List[Dict[str, Any]] = []
-    stack = [folder_id]
+) -> List[Tuple[Dict[str, Any], bool, str]]:
+    """Return (file, under_downweighted_folder, route_path) for weighted fallback picks."""
+    found: List[Tuple[Dict[str, Any], bool, str]] = []
+    stack: List[Tuple[str, bool, List[str]]] = [(folder_id, False, [])]
     visited_folders: Set[str] = set()
 
     while stack:
-        current = stack.pop()
+        current, under_downweighted, path_parts = stack.pop()
         if current in visited_folders:
             continue
         visited_folders.add(current)
@@ -219,32 +334,70 @@ def collect_all_media(
         children = list_folder_children(service, current)
         subfolders = [item for item in children if item.get("mimeType") == FOLDER_MIME]
         random.shuffle(subfolders)
+        route = _normalize_route(path_parts)
 
         for item in children:
             if is_eligible_media(item, sent_ids):
-                found.append(item)
+                found.append((item, under_downweighted, route))
 
         for folder in subfolders:
-            stack.append(folder["id"])
+            nested_downweighted = under_downweighted or _is_downweighted_folder_name(
+                folder.get("name", "")
+            )
+            stack.append(
+                (
+                    folder["id"],
+                    nested_downweighted,
+                    path_parts + [folder.get("name", "")],
+                )
+            )
 
     return found
+
+
+def _pick_from_candidates(
+    candidates: List[Tuple[Dict[str, Any], bool, str]],
+    blocked_routes: Set[str],
+) -> Optional[Tuple[Dict[str, Any], str]]:
+    if not candidates:
+        return None
+
+    available = [
+        (item, under_downweighted, route)
+        for item, under_downweighted, route in candidates
+        if not _is_route_blocked(route, blocked_routes)
+    ]
+    pool = available or candidates
+
+    weights = [
+        DOWNWEIGHTED_FOLDER_WEIGHT if under_downweighted else 1.0
+        for _, under_downweighted, _ in pool
+    ]
+    chosen_item, _, chosen_route = random.choices(pool, weights=weights, k=1)[0]
+    return chosen_item, chosen_route
 
 
 def pick_random_media(
     service,
     root_folder_id: str,
     sent_ids: Set[str],
+    blocked_routes: Optional[Set[str]] = None,
     walk_attempts: int = 40,
-) -> Optional[Dict[str, Any]]:
+) -> Optional[Tuple[Dict[str, Any], str]]:
+    blocked_routes = blocked_routes or set()
+
     for _ in range(walk_attempts):
-        picked = _random_walk_pick(service, root_folder_id, sent_ids)
+        picked = _random_walk_pick(
+            service,
+            root_folder_id,
+            sent_ids,
+            blocked_routes=blocked_routes,
+        )
         if picked:
             return picked
 
     candidates = collect_all_media(service, root_folder_id, sent_ids)
-    if not candidates:
-        return None
-    return random.choice(candidates)
+    return _pick_from_candidates(candidates, blocked_routes)
 
 
 def download_drive_file(service, file_id: str, destination: Path) -> None:
@@ -310,16 +463,29 @@ def prepare_random_post(config: Optional[Dict[str, Any]] = None) -> Dict[str, An
     service = build_drive_service(config)
     state = load_state()
     sent_ids = set(state.get("sent_ids", []))
+    blocked_routes = get_blocked_routes(state)
     reset_pool = False
 
-    picked = pick_random_media(service, folder_id, sent_ids)
-    if not picked:
+    picked_result = pick_random_media(
+        service,
+        folder_id,
+        sent_ids,
+        blocked_routes=blocked_routes,
+    )
+    if not picked_result:
         sent_ids.clear()
         reset_pool = True
-        picked = pick_random_media(service, folder_id, sent_ids)
+        picked_result = pick_random_media(
+            service,
+            folder_id,
+            sent_ids,
+            blocked_routes=blocked_routes,
+        )
 
-    if not picked:
+    if not picked_result:
         raise RuntimeError("Nie znaleziono żadnych zdjęć ani nagrań w folderze.")
+
+    picked, route_path = picked_result
 
     suffix = Path(picked["name"]).suffix.lower()
     temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=suffix)
@@ -353,6 +519,7 @@ def prepare_random_post(config: Optional[Dict[str, Any]] = None) -> Dict[str, An
         "converted_from_heic": converted_from_heic,
         "local_path": temp_path,
         "reset_pool": reset_pool,
+        "route_path": route_path,
     }
 
 
@@ -395,6 +562,7 @@ async def send_random_memory(
     sent_ids = state.setdefault("sent_ids", [])
     if post["file_id"] not in sent_ids:
         sent_ids.append(post["file_id"])
+    record_recent_route(state, post.get("route_path", ""))
 
     config = config or load_config()
     daily_channel_id = config.get("discord_channel_id")
@@ -497,6 +665,8 @@ if __name__ == "__main__":
     try:
         post = prepare_random_post()
         print(f"Wylosowano: {post['name']}")
+        route = post.get("route_path") or "(root)"
+        print(f"Trasa: {route}")
         print(f"Typ: {'wideo' if post['is_video'] else 'zdjęcie'}")
         print(f"Rozmiar: {post['local_path'].stat().st_size // 1024} KB")
         if post.get("reset_pool"):
