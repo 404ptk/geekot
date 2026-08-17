@@ -53,6 +53,11 @@ async def setup_help_commands(client: discord.Client, tree: app_commands.Command
         
         embed.add_field(name="🎮 **Gry do zagrania**", value="*Zarządzaj listą gier, w które chcecie zagrać:*\n"
                         "`/gry [dodaj/dodajopis/edytujopis/lista/pomoc/usun]`", inline=False)
+
+        embed.add_field(name="🎙️ **Aktywność VC**", value=
+            "Heatmapa obecności na kanałach głosowych z ostatnich 30 dni:\n"
+            "`/aktywnosc` — Twoja aktywność\n"
+            "`/aktywnosc [nick]` — Aktywność wybranego użytkownika", inline=False)
         
         embed.add_field(name="📝 **Changelog**", value="Najnowsze zmiany w bocie:\n"
                         "`/changelog`", inline=False)

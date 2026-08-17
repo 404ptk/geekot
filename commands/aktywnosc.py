@@ -1,0 +1,487 @@
+import io
+import json
+import os
+import threading
+import time
+from datetime import date, datetime, timedelta, timezone, time as dt_time
+from typing import Dict, List, Optional, Tuple
+from zoneinfo import ZoneInfo
+
+import discord
+from discord import app_commands
+from discord.ext import tasks
+from PIL import Image, ImageDraw, ImageFont
+
+from commands.fun import is_voice_active
+
+DATA_FILE = "txt/aktywnosc.json"
+WINDOW_DAYS = 30
+ACTIVE_THRESHOLD_SECONDS = 5 * 60
+KEEP_DAYS = 45
+COMMIT_INTERVAL_MINUTES = 1
+
+try:
+    TZ = ZoneInfo("Europe/Warsaw")
+except Exception:
+    TZ = datetime.now().astimezone().tzinfo or timezone(timedelta(hours=2))
+
+# GitHub-style squares on Discord embed background (#2b2d31)
+COLOR_BG = (43, 45, 49, 255)
+COLOR_EMPTY = (58, 61, 68, 255)
+COLOR_OUT_OF_RANGE = (48, 50, 54, 255)
+COLOR_ACTIVE = (57, 211, 83, 255)
+COLOR_LABEL = (168, 174, 182, 255)
+COLOR_TODAY_BORDER = (201, 209, 217, 255)
+
+WEEKDAY_LABELS = ["Pn", "Wt", "Śr", "Cz", "Pt", "So", "Nd"]
+MONTHS_SHORT = ["", "Sty", "Lut", "Mar", "Kwi", "Maj", "Cze", "Lip", "Sie", "Wrz", "Paź", "Lis", "Gru"]
+MONTHS_GENITIVE = {
+    1: "stycznia",
+    2: "lutego",
+    3: "marca",
+    4: "kwietnia",
+    5: "maja",
+    6: "czerwca",
+    7: "lipca",
+    8: "sierpnia",
+    9: "września",
+    10: "października",
+    11: "listopada",
+    12: "grudnia",
+}
+
+_file_lock = threading.Lock()
+active_voice_sessions: Dict[int, float] = {}
+
+
+def now_warsaw() -> datetime:
+    return datetime.now(TZ)
+
+
+def today_warsaw() -> date:
+    return now_warsaw().date()
+
+
+def load_activity() -> dict:
+    if not os.path.exists(DATA_FILE):
+        return {}
+    try:
+        with open(DATA_FILE, "r", encoding="utf-8") as f:
+            data = json.load(f)
+            return data if isinstance(data, dict) else {}
+    except (json.JSONDecodeError, OSError):
+        return {}
+
+
+def save_activity(data: dict) -> None:
+    os.makedirs(os.path.dirname(DATA_FILE) or ".", exist_ok=True)
+    cutoff = (today_warsaw() - timedelta(days=KEEP_DAYS)).isoformat()
+    pruned = {}
+    for uid, days in data.items():
+        if not isinstance(days, dict):
+            continue
+        kept = {day: seconds for day, seconds in days.items() if isinstance(day, str) and day >= cutoff}
+        if kept:
+            pruned[uid] = kept
+    with open(DATA_FILE, "w", encoding="utf-8") as f:
+        json.dump(pruned, f, indent=4)
+
+
+def add_seconds(data: dict, user_id: int, day: date, seconds: float) -> None:
+    if seconds <= 0:
+        return
+    uid = str(user_id)
+    user_days = data.setdefault(uid, {})
+    key = day.isoformat()
+    user_days[key] = user_days.get(key, 0) + seconds
+
+
+def iter_session_chunks(start_ts: float, end_ts: float) -> List[Tuple[date, float]]:
+    if end_ts <= start_ts:
+        return []
+
+    start_dt = datetime.fromtimestamp(start_ts, TZ)
+    end_dt = datetime.fromtimestamp(end_ts, TZ)
+    chunks: List[Tuple[date, float]] = []
+    cursor = start_dt
+
+    while cursor.date() < end_dt.date():
+        next_midnight = datetime.combine(cursor.date() + timedelta(days=1), dt_time.min, tzinfo=TZ)
+        chunks.append((cursor.date(), (next_midnight - cursor).total_seconds()))
+        cursor = next_midnight
+
+    remaining = (end_dt - cursor).total_seconds()
+    if remaining > 0:
+        chunks.append((end_dt.date(), remaining))
+    return chunks
+
+
+def credit_session(user_id: int, start_ts: float, end_ts: float) -> None:
+    chunks = iter_session_chunks(start_ts, end_ts)
+    if not chunks:
+        return
+    with _file_lock:
+        data = load_activity()
+        for day, seconds in chunks:
+            add_seconds(data, user_id, day, seconds)
+        save_activity(data)
+
+
+def seconds_by_day_for_user(user_id: int) -> Dict[str, float]:
+    with _file_lock:
+        data = load_activity()
+        raw = data.get(str(user_id), {})
+        seconds_map = {day: float(value) for day, value in raw.items() if isinstance(value, (int, float))}
+
+    start_ts = active_voice_sessions.get(user_id)
+    if start_ts is not None:
+        for day, seconds in iter_session_chunks(start_ts, time.time()):
+            key = day.isoformat()
+            seconds_map[key] = seconds_map.get(key, 0) + seconds
+    return seconds_map
+
+
+def window_dates(today: Optional[date] = None) -> List[date]:
+    today = today or today_warsaw()
+    start = today - timedelta(days=WINDOW_DAYS - 1)
+    return [start + timedelta(days=i) for i in range(WINDOW_DAYS)]
+
+
+def is_day_active(seconds: float) -> bool:
+    return seconds >= ACTIVE_THRESHOLD_SECONDS
+
+
+def dni_label(count: int) -> str:
+    if count == 1:
+        return "dzień"
+    return "dni"
+
+
+def format_duration(seconds: float) -> str:
+    total = int(max(0, seconds))
+    hours, remainder = divmod(total, 3600)
+    minutes, secs = divmod(remainder, 60)
+    parts = []
+    if hours > 0:
+        parts.append(f"{hours}h")
+    if minutes > 0 or hours > 0:
+        parts.append(f"{minutes}m")
+    elif secs > 0:
+        parts.append(f"{secs}s")
+    else:
+        parts.append("0m")
+    return " ".join(parts)
+
+
+def format_date_pl(day: date) -> str:
+    return f"{day.day} {MONTHS_GENITIVE[day.month]}"
+
+
+def compute_stats(seconds_map: Dict[str, float], today: Optional[date] = None) -> dict:
+    today = today or today_warsaw()
+    days = window_dates(today)
+    active_flags = [is_day_active(seconds_map.get(day.isoformat(), 0)) for day in days]
+    total_seconds = sum(seconds_map.get(day.isoformat(), 0) for day in days)
+    active_count = sum(1 for flag in active_flags if flag)
+
+    longest = 0
+    current_run = 0
+    for flag in active_flags:
+        if flag:
+            current_run += 1
+            longest = max(longest, current_run)
+        else:
+            current_run = 0
+
+    streak_idx = len(active_flags) - 1
+    if streak_idx >= 0 and not active_flags[streak_idx] and streak_idx > 0:
+        streak_idx -= 1
+    current_streak = 0
+    while streak_idx >= 0 and active_flags[streak_idx]:
+        current_streak += 1
+        streak_idx -= 1
+
+    return {
+        "days": days,
+        "active_flags": active_flags,
+        "active_count": active_count,
+        "total_seconds": total_seconds,
+        "current_streak": current_streak,
+        "longest_streak": longest,
+        "today": today,
+    }
+
+
+def _load_font(size: int) -> ImageFont.ImageFont:
+    candidates = [
+        os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "images", "font", "roboto", "Roboto-Medium.ttf")),
+        os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "images", "font", "roboto", "Roboto-Regular.ttf")),
+        r"C:\Windows\Fonts\segoeui.ttf",
+        r"C:\Windows\Fonts\arial.ttf",
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+    ]
+    for path in candidates:
+        if os.path.isfile(path):
+            try:
+                return ImageFont.truetype(path, size)
+            except OSError:
+                continue
+    return ImageFont.load_default()
+
+
+def _text_size(draw: ImageDraw.ImageDraw, text: str, font: ImageFont.ImageFont) -> Tuple[int, int]:
+    bbox = draw.textbbox((0, 0), text, font=font)
+    return bbox[2] - bbox[0], bbox[3] - bbox[1]
+
+
+def build_heatmap_image(stats: dict) -> io.BytesIO:
+    today = stats["today"]
+    days: List[date] = stats["days"]
+    start = days[0]
+    in_window = {day for day in days}
+    active_lookup = {day: flag for day, flag in zip(days, stats["active_flags"])}
+
+    grid_start = start - timedelta(days=start.weekday())
+    last_grid_day = today + timedelta(days=(6 - today.weekday()))
+    num_weeks = ((last_grid_day - grid_start).days // 7) + 1
+
+    scale = 2
+    cell = 52 * scale
+    gap = 12 * scale
+    radius = 10 * scale
+    pad = 28 * scale
+    label_w = 48 * scale
+    month_h = 32 * scale
+    legend_h = 44 * scale
+    pitch = cell + gap
+
+    grid_w = num_weeks * pitch - gap
+    grid_h = 7 * pitch - gap
+    width = pad + label_w + grid_w + pad
+    height = pad + month_h + grid_h + pad + legend_h
+
+    img = Image.new("RGBA", (width, height), COLOR_BG)
+    draw = ImageDraw.Draw(img)
+    font_small = _load_font(13 * scale)
+    font_legend = _load_font(14 * scale)
+
+    origin_x = pad + label_w
+    origin_y = pad + month_h
+
+    last_month = None
+    for week in range(num_weeks):
+        for row in range(7):
+            day = grid_start + timedelta(days=week * 7 + row)
+            if start <= day <= today and day.month != last_month:
+                label = MONTHS_SHORT[day.month]
+                x = origin_x + week * pitch
+                draw.text((x, pad - 2 * scale), label, fill=COLOR_LABEL, font=font_small)
+                last_month = day.month
+                break
+
+    for row, label in enumerate(WEEKDAY_LABELS):
+        tw, th = _text_size(draw, label, font_small)
+        x = pad + label_w - tw - 8 * scale
+        y = origin_y + row * pitch + (cell - th) // 2
+        draw.text((x, y), label, fill=COLOR_LABEL, font=font_small)
+
+    for week in range(num_weeks):
+        for row in range(7):
+            day = grid_start + timedelta(days=week * 7 + row)
+            x1 = origin_x + week * pitch
+            y1 = origin_y + row * pitch
+            x2 = x1 + cell
+            y2 = y1 + cell
+            box = (x1, y1, x2, y2)
+
+            if day in in_window:
+                fill = COLOR_ACTIVE if active_lookup.get(day) else COLOR_EMPTY
+            else:
+                fill = COLOR_OUT_OF_RANGE
+
+            try:
+                draw.rounded_rectangle(box, radius=radius, fill=fill)
+            except Exception:
+                draw.rectangle(box, fill=fill)
+
+            if day == today:
+                try:
+                    draw.rounded_rectangle(box, radius=radius, outline=COLOR_TODAY_BORDER, width=max(2, scale))
+                except Exception:
+                    draw.rectangle(box, outline=COLOR_TODAY_BORDER, width=max(2, scale))
+
+    legend_y = origin_y + grid_h + 18 * scale
+    legend_x = origin_x
+
+    def draw_legend_item(x: int, fill: tuple, text: str) -> int:
+        box = (x, legend_y, x + 16 * scale, legend_y + 16 * scale)
+        try:
+            draw.rounded_rectangle(box, radius=4 * scale, fill=fill)
+        except Exception:
+            draw.rectangle(box, fill=fill)
+        draw.text((x + 22 * scale, legend_y - 2 * scale), text, fill=COLOR_LABEL, font=font_legend)
+        tw, _ = _text_size(draw, text, font_legend)
+        return x + 22 * scale + tw + 18 * scale
+
+    legend_x = draw_legend_item(legend_x, COLOR_EMPTY, "brak")
+    draw_legend_item(legend_x, COLOR_ACTIVE, "≥ 5 min na VC")
+
+    if scale > 1:
+        img = img.resize((width // scale, height // scale), Image.Resampling.LANCZOS)
+
+    buffer = io.BytesIO()
+    img.save(buffer, format="PNG")
+    buffer.seek(0)
+    return buffer
+
+
+def build_emoji_grid(stats: dict) -> str:
+    today = stats["today"]
+    days: List[date] = stats["days"]
+    start = days[0]
+    active_lookup = {day: flag for day, flag in zip(days, stats["active_flags"])}
+    grid_start = start - timedelta(days=start.weekday())
+    num_weeks = ((today - grid_start).days // 7) + 1
+
+    lines = []
+    for row, label in enumerate(WEEKDAY_LABELS):
+        cells = []
+        for week in range(num_weeks):
+            day = grid_start + timedelta(days=week * 7 + row)
+            if day < start or day > today:
+                cells.append("▪️")
+            elif active_lookup.get(day):
+                cells.append("🟩")
+            else:
+                cells.append("⬛")
+        lines.append(f"{label}  {''.join(cells)}")
+    return "\n".join(lines)
+
+
+def build_embed(member: discord.Member, stats: dict) -> discord.Embed:
+    start = stats["days"][0]
+    end = stats["today"]
+    active_count = stats["active_count"]
+    color = discord.Color.from_rgb(57, 211, 83) if active_count else discord.Color.from_rgb(110, 118, 129)
+
+    embed = discord.Embed(
+        title=f"Aktywność — {member.display_name}",
+        description=(
+            f"{format_date_pl(start)} – {format_date_pl(end)}\n"
+            f"**{active_count} / {WINDOW_DAYS}** dni z aktywnością"
+        ),
+        color=color,
+        timestamp=now_warsaw(),
+    )
+    embed.add_field(
+        name="🔥 Aktualna seria",
+        value=f"**{stats['current_streak']}** {dni_label(stats['current_streak'])}",
+        inline=True,
+    )
+    embed.add_field(
+        name="🏆 Najdłuższa seria",
+        value=f"**{stats['longest_streak']}** {dni_label(stats['longest_streak'])}",
+        inline=True,
+    )
+    embed.add_field(
+        name="⏱️ Czas na VC",
+        value=format_duration(stats["total_seconds"]),
+        inline=True,
+    )
+    embed.set_footer(text="Zielony = ≥ 5 min na kanale głosowym bez mute · ostatnie 30 dni")
+    if member.display_avatar:
+        embed.set_thumbnail(url=member.display_avatar.url)
+    return embed
+
+
+@tasks.loop(minutes=COMMIT_INTERVAL_MINUTES)
+async def commit_daily_voice():
+    if not active_voice_sessions:
+        return
+    now = time.time()
+    with _file_lock:
+        data = load_activity()
+        for user_id, start_ts in list(active_voice_sessions.items()):
+            for day, seconds in iter_session_chunks(start_ts, now):
+                add_seconds(data, user_id, day, seconds)
+            if user_id in active_voice_sessions:
+                active_voice_sessions[user_id] = now
+        save_activity(data)
+
+
+def _scan_current_voice(guild: Optional[discord.Guild]) -> None:
+    if guild is None:
+        return
+    now = time.time()
+    channels = list(guild.voice_channels) + list(getattr(guild, "stage_channels", []))
+    for channel in channels:
+        for member in channel.members:
+            if member.bot or not member.voice:
+                continue
+            if is_voice_active(member.voice):
+                active_voice_sessions[member.id] = now
+
+
+async def setup_aktywnosc_commands(client: discord.Client, tree: app_commands.CommandTree, guild_id: int):
+    guild_obj = discord.Object(id=guild_id)
+
+    async def listener_on_voice_state_update(
+        member: discord.Member,
+        before: discord.VoiceState,
+        after: discord.VoiceState,
+    ):
+        if member.bot or member.guild is None or member.guild.id != guild_id:
+            return
+
+        was_active = is_voice_active(before)
+        is_active = is_voice_active(after)
+        now = time.time()
+
+        if not was_active and is_active:
+            active_voice_sessions[member.id] = now
+        elif was_active and not is_active:
+            start_ts = active_voice_sessions.pop(member.id, None)
+            if start_ts is not None:
+                credit_session(member.id, start_ts, now)
+
+    client.add_listener(listener_on_voice_state_update, "on_voice_state_update")
+
+    if not commit_daily_voice.is_running():
+        commit_daily_voice.start()
+
+    _scan_current_voice(client.get_guild(guild_id))
+
+    @tree.command(
+        name="aktywnosc",
+        description="Pokazuje aktywność na kanałach głosowych z ostatnich 30 dni",
+        guild=guild_obj,
+    )
+    @app_commands.describe(nick="Użytkownik (puste = Twoja aktywność)")
+    async def aktywnosc(interaction: discord.Interaction, nick: Optional[discord.Member] = None):
+        target = nick or interaction.user
+        if not isinstance(target, discord.Member):
+            guild = interaction.guild or client.get_guild(guild_id)
+            target = guild.get_member(target.id) if guild else None
+            if target is None:
+                await interaction.response.send_message(
+                    "Nie znaleziono tego użytkownika na serwerze.",
+                    ephemeral=True,
+                )
+                return
+
+        if target.bot:
+            await interaction.response.send_message("Boty nie są śledzone.", ephemeral=True)
+            return
+
+        stats = compute_stats(seconds_by_day_for_user(target.id))
+        embed = build_embed(target, stats)
+
+        try:
+            buffer = build_heatmap_image(stats)
+            file = discord.File(fp=buffer, filename="aktywnosc.png")
+            embed.set_image(url="attachment://aktywnosc.png")
+            await interaction.response.send_message(embed=embed, file=file)
+        except Exception as exc:
+            print(f"[aktywnosc] Nie udało się wygenerować heatmapy: {exc}")
+            embed.description = f"{embed.description}\n\n{build_emoji_grid(stats)}"
+            await interaction.response.send_message(embed=embed)

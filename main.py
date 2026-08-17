@@ -35,6 +35,7 @@ import leetify_utils
 from commands import steam as steam_module
 from commands import relations as relations_module
 from commands import wakacje as wakacje_module
+from commands import aktywnosc as aktywnosc_module
 from jobs import setup_jobs_watch
 from pathlib import Path
 
@@ -91,6 +92,7 @@ intents = discord.Intents.default()
 intents.message_content = True
 intents.members = True
 intents.presences = True
+intents.voice_states = True
 client = commands.Bot(command_prefix="!", intents=intents)
 
 reaction_name = "phester102"
@@ -219,6 +221,7 @@ async def on_ready():
         ("Steam commands", steam_module.setup_steam_commands(client, client.tree, guild_id=GUILD_ID)),
         ("Relations commands", relations_module.setup_relations_commands(client, client.tree, guild_id=GUILD_ID)),
         ("Wakacje commands", wakacje_module.setup_wakacje_commands(client, client.tree)),
+        ("Activity commands", aktywnosc_module.setup_aktywnosc_commands(client, client.tree, guild_id=GUILD_ID)),
         ("YouTube Shorts", youtube_shorts_module.setup_youtube_shorts(client, client.tree, guild_id=GUILD_ID)),
         ("Drive daily memory", drive_daily_module.setup_drive_daily(client, client.tree, guild_id=GUILD_ID)),
         ("Jobs watcher", setup_jobs_watch(client, client.tree, guild_id=GUILD_ID)),
