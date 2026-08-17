@@ -16,7 +16,6 @@ from commands.fun import is_voice_active
 
 DATA_FILE = "txt/aktywnosc.json"
 WINDOW_DAYS = 30
-ACTIVE_THRESHOLD_SECONDS = 5 * 60
 KEEP_DAYS = 45
 COMMIT_INTERVAL_MINUTES = 1
 
@@ -29,9 +28,26 @@ except Exception:
 COLOR_BG = (43, 45, 49, 255)
 COLOR_EMPTY = (58, 61, 68, 255)
 COLOR_OUT_OF_RANGE = (48, 50, 54, 255)
-COLOR_ACTIVE = (57, 211, 83, 255)
 COLOR_LABEL = (168, 174, 182, 255)
 COLOR_TODAY_BORDER = (201, 209, 217, 255)
+
+# Progi i zieleń jak na GitHubie: im dłużej na VC, tym jaśniej
+LEVEL_THRESHOLDS = (
+    5 * 60,        # ≥ 5 min
+    30 * 60,       # ≥ 30 min
+    60 * 60,       # ≥ 1 h
+    3 * 60 * 60,   # ≥ 3 h
+    5 * 60 * 60,   # ≥ 5 h
+)
+LEVEL_COLORS = (
+    COLOR_EMPTY,              # 0: brak / < 5 min
+    (14, 68, 41, 255),        # 1: ≥ 5 min   #0e4429
+    (0, 109, 50, 255),        # 2: ≥ 30 min  #006d32
+    (38, 166, 65, 255),       # 3: ≥ 1 h     #26a641
+    (57, 211, 83, 255),       # 4: ≥ 3 h     #39d353
+    (94, 240, 127, 255),      # 5: ≥ 5 h     jaśniejszy lime
+)
+LEVEL_LABELS = ("—", "5m", "30m", "1h", "3h", "5h")
 
 WEEKDAY_LABELS = ["Pn", "Wt", "Śr", "Cz", "Pt", "So", "Nd"]
 MONTHS_SHORT = ["", "Sty", "Lut", "Mar", "Kwi", "Maj", "Cze", "Lip", "Sie", "Wrz", "Paź", "Lis", "Gru"]
@@ -147,8 +163,22 @@ def window_dates(today: Optional[date] = None) -> List[date]:
     return [start + timedelta(days=i) for i in range(WINDOW_DAYS)]
 
 
+def activity_level(seconds: float) -> int:
+    level = 0
+    for threshold in LEVEL_THRESHOLDS:
+        if seconds >= threshold:
+            level += 1
+        else:
+            break
+    return level
+
+
+def color_for_seconds(seconds: float) -> tuple:
+    return LEVEL_COLORS[activity_level(seconds)]
+
+
 def is_day_active(seconds: float) -> bool:
-    return seconds >= ACTIVE_THRESHOLD_SECONDS
+    return activity_level(seconds) > 0
 
 
 def dni_label(count: int) -> str:
@@ -209,6 +239,7 @@ def compute_stats(seconds_map: Dict[str, float], today: Optional[date] = None) -
         "current_streak": current_streak,
         "longest_streak": longest,
         "today": today,
+        "seconds_by_day": {day: seconds_map.get(day.isoformat(), 0.0) for day in days},
     }
 
 
@@ -239,7 +270,7 @@ def build_heatmap_image(stats: dict) -> io.BytesIO:
     days: List[date] = stats["days"]
     start = days[0]
     in_window = {day for day in days}
-    active_lookup = {day: flag for day, flag in zip(days, stats["active_flags"])}
+    seconds_lookup = stats.get("seconds_by_day", {})
 
     grid_start = start - timedelta(days=start.weekday())
     last_grid_day = today + timedelta(days=(6 - today.weekday()))
@@ -252,7 +283,7 @@ def build_heatmap_image(stats: dict) -> io.BytesIO:
     pad = 28 * scale
     label_w = 48 * scale
     month_h = 32 * scale
-    legend_h = 44 * scale
+    legend_h = 62 * scale
     pitch = cell + gap
 
     grid_w = num_weeks * pitch - gap
@@ -295,7 +326,7 @@ def build_heatmap_image(stats: dict) -> io.BytesIO:
             box = (x1, y1, x2, y2)
 
             if day in in_window:
-                fill = COLOR_ACTIVE if active_lookup.get(day) else COLOR_EMPTY
+                fill = color_for_seconds(seconds_lookup.get(day, 0.0))
             else:
                 fill = COLOR_OUT_OF_RANGE
 
@@ -310,21 +341,40 @@ def build_heatmap_image(stats: dict) -> io.BytesIO:
                 except Exception:
                     draw.rectangle(box, outline=COLOR_TODAY_BORDER, width=max(2, scale))
 
-    legend_y = origin_y + grid_h + 18 * scale
+    legend_y = origin_y + grid_h + 16 * scale
+    font_legend_small = _load_font(11 * scale)
+    less_label = "Mniej"
+    more_label = "Więcej"
+    less_w, less_h = _text_size(draw, less_label, font_legend)
+    sq = 16 * scale
+    legend_pitch = 40 * scale
+    squares_w = len(LEVEL_COLORS) * legend_pitch - (legend_pitch - sq)
     legend_x = origin_x
+    draw.text((legend_x, legend_y + (sq - less_h) // 2), less_label, fill=COLOR_LABEL, font=font_legend)
+    squares_x = legend_x + less_w + 12 * scale
 
-    def draw_legend_item(x: int, fill: tuple, text: str) -> int:
-        box = (x, legend_y, x + 16 * scale, legend_y + 16 * scale)
+    for i, fill in enumerate(LEVEL_COLORS):
+        x1 = squares_x + i * legend_pitch
+        box = (x1, legend_y, x1 + sq, legend_y + sq)
         try:
             draw.rounded_rectangle(box, radius=4 * scale, fill=fill)
         except Exception:
             draw.rectangle(box, fill=fill)
-        draw.text((x + 22 * scale, legend_y - 2 * scale), text, fill=COLOR_LABEL, font=font_legend)
-        tw, _ = _text_size(draw, text, font_legend)
-        return x + 22 * scale + tw + 18 * scale
+        label = LEVEL_LABELS[i]
+        tw, _ = _text_size(draw, label, font_legend_small)
+        draw.text(
+            (x1 + (sq - tw) // 2, legend_y + sq + 4 * scale),
+            label,
+            fill=COLOR_LABEL,
+            font=font_legend_small,
+        )
 
-    legend_x = draw_legend_item(legend_x, COLOR_EMPTY, "brak")
-    draw_legend_item(legend_x, COLOR_ACTIVE, "≥ 5 min na VC")
+    draw.text(
+        (squares_x + squares_w + 12 * scale, legend_y + (sq - less_h) // 2),
+        more_label,
+        fill=COLOR_LABEL,
+        font=font_legend,
+    )
 
     if scale > 1:
         img = img.resize((width // scale, height // scale), Image.Resampling.LANCZOS)
@@ -388,7 +438,7 @@ def build_embed(member: discord.Member, stats: dict) -> discord.Embed:
         value=format_duration(stats["total_seconds"]),
         inline=True,
     )
-    embed.set_footer(text="Zielony = ≥ 5 min na kanale głosowym bez mute · ostatnie 30 dni")
+    embed.set_footer(text="Im jaśniejsza zieleń, tym więcej czasu na VC · ostatnie 30 dni")
     if member.display_avatar:
         embed.set_thumbnail(url=member.display_avatar.url)
     return embed
