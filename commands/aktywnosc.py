@@ -433,11 +433,6 @@ def build_embed(member: discord.Member, stats: dict) -> discord.Embed:
         value=f"**{stats['longest_streak']}** {dni_label(stats['longest_streak'])}",
         inline=True,
     )
-    embed.add_field(
-        name="⏱️ Czas na VC",
-        value=format_duration(stats["total_seconds"]),
-        inline=True,
-    )
     embed.set_footer(text="Im jaśniejsza zieleń, tym więcej czasu na VC · ostatnie 30 dni")
     if member.display_avatar:
         embed.set_thumbnail(url=member.display_avatar.url)
