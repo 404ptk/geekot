@@ -223,13 +223,13 @@ def register_faceit_command(tree, guild, faceit_nick_autocomplete):
         avg_stats_value = f"**K/D:** {avg_kd:.2f} | **HS:** {avg_hs:.0f}% | **ADR:** {avg_adr:.1f}\n"
         avg_stats_value += f"**Winrate:** {win_percentage:.0f}%\n"
         if total_entry_count > 0:
-            avg_stats_value += f"**Entry:** {entry_percentage:.0f}% ({total_entry_count})\n"
+            avg_stats_value += f"**Entry:** {entry_percentage:.0f}% ({total_entry_count}) |"
         if total_clutch_count > 0:
-            avg_stats_value += f"**Clutche:** {clutch_percentage:.0f}% ({total_clutch_count})\n"
+            avg_stats_value += f" **Clutche:** {clutch_percentage:.0f}% ({total_clutch_count})\n"
         if total_flash_count > 0:
-            avg_stats_value += f"**Flashe:** {flash_percentage:.0f}% ({total_flash_count})\n"
+            avg_stats_value += f"**Flashe:** {flash_percentage:.0f}% ({total_flash_count}) | "
         if match_count > 0:
-            avg_stats_value += f"**Utility:** {avg_utility:.1f}"
+            avg_stats_value += f" **Utility:** {avg_utility:.1f}"
         
         embed.add_field(
             name="📊 Średnie statystyki",

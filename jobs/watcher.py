@@ -13,6 +13,11 @@ _running_tasks = []
 
 
 async def check_and_post(client: discord.Client):
+    from startup_guard import allow_background_api
+
+    if not allow_background_api("watcher ofert pracy"):
+        return
+
     config = load_config()
     filters = config.get("filters", DEFAULT_CONFIG["filters"])
     channel_id = int(config["discord_channel_id"])

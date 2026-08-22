@@ -218,7 +218,11 @@ def format_file_changes(files: list) -> str:
 @tasks.loop(minutes=15)
 async def monitor_cs2_updates_loop():
     """Monitoruje aktualizacje CS2 z GameTracking-CS2"""
-    
+    from startup_guard import allow_background_api
+
+    if not allow_background_api("monitor aktualizacji CS2"):
+        return
+
     try:
         tracking_data = load_cs2_updates_tracking()
         last_commit_sha = tracking_data.get("last_commit_sha")
@@ -331,6 +335,11 @@ async def setup_steam_commands(client: discord.Client, tree: app_commands.Comman
     
     async def send_pending_cs2_updates():
         """Wysyła zakolejkowane aktualizacje CS2 na Discord"""
+        from startup_guard import allow_background_api
+
+        if not allow_background_api("posty z aktualizacjami CS2"):
+            return
+
         tracking_data = load_cs2_updates_tracking()
         pending_commits = tracking_data.get("pending_commits", [])
         

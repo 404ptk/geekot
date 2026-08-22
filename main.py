@@ -45,6 +45,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent / "google"))
 import drive_daily as drive_daily_module
 import youtube_shorts as youtube_shorts_module
 from startup_logger import record_startup_step, print_startup_summary
+from startup_guard import mark_bot_started, is_startup_freeze_active, STARTUP_FREEZE_MINUTES
 
 
 games_data = games_module.load_games(startup_label="Games data")  # commands/games.py
@@ -232,11 +233,18 @@ async def on_ready():
     # await youtube_watch.setup_youtube_watch(client, client.tree, guild_id=GUILD_ID)  # start watcher
 
     startup_completed = True
+    mark_bot_started()
     print_startup_summary()
 
+    freeze_note = (
+        f"\n- Startup freeze: {STARTUP_FREEZE_MINUTES} min (oferty pracy, update CS2)"
+        if is_startup_freeze_active()
+        else ""
+    )
     print(f'\n{client.user} has connected to Discord!\n\n'
           f'\nOptions:'
-          f'\n- Reacting to {reaction_name}: {reaction_active}')
+          f'\n- Reacting to {reaction_name}: {reaction_active}'
+          f'{freeze_note}')
     await client.change_presence(activity=discord.Game(name="/geek - Jestem geekiem"))
 
     # client.loop.create_task(reset_connection_count())
