@@ -6,12 +6,30 @@ import os
 import time
 import logging
 from datetime import timedelta
+from typing import List, Optional, Tuple
 import io
 from PIL import Image, ImageDraw, ImageFont
 
 STATS_FILE = "txt/server_stats.json"
 IGNORED_CHANNEL_ID = 710042604720488520
 active_voice_sessions = {}
+RANKING_TOP_N = 5
+
+# Discord embed background (#2b2d31) — spójnie z /aktywnosc
+COLOR_BG = (43, 45, 49, 255)
+COLOR_PANEL = (49, 51, 56, 255)
+COLOR_ROW = (58, 61, 68, 255)
+COLOR_ROW_ALT = (52, 55, 60, 255)
+COLOR_HEADER = (72, 76, 84, 255)
+COLOR_LABEL = (168, 174, 182, 255)
+COLOR_TEXT = (230, 232, 235, 255)
+COLOR_MUTED = (130, 136, 144, 255)
+COLOR_ACCENT_VOICE = (88, 166, 255, 255)
+COLOR_ACCENT_MSG = (163, 113, 247, 255)
+COLOR_GOLD = (255, 200, 87, 255)
+COLOR_SILVER = (192, 202, 216, 255)
+COLOR_BRONZE = (205, 127, 50, 255)
+COLOR_SELF = (57, 211, 83, 255)
 
 def is_voice_active(state: discord.VoiceState):
     """Checks if the user's voice time should be counted."""
@@ -113,6 +131,204 @@ def format_duration(seconds):
     
     return " ".join(parts) if parts else "0m"
 
+
+def wiadomosci_label(count: int) -> str:
+    return "wiadomość" if count == 1 else "wiadomości"
+
+
+def _load_font(size: int) -> ImageFont.ImageFont:
+    candidates = [
+        os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "images", "font", "roboto", "Roboto-Medium.ttf")),
+        os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "images", "font", "roboto", "Roboto-Regular.ttf")),
+        r"C:\Windows\Fonts\segoeui.ttf",
+        r"C:\Windows\Fonts\arial.ttf",
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+    ]
+    for path in candidates:
+        if os.path.isfile(path):
+            try:
+                return ImageFont.truetype(path, size)
+            except OSError:
+                continue
+    return ImageFont.load_default()
+
+
+def _text_size(draw: ImageDraw.ImageDraw, text: str, font: ImageFont.ImageFont) -> Tuple[int, int]:
+    bbox = draw.textbbox((0, 0), text, font=font)
+    return bbox[2] - bbox[0], bbox[3] - bbox[1]
+
+
+def _truncate_to_width(draw: ImageDraw.ImageDraw, text: str, font: ImageFont.ImageFont, max_width: int) -> str:
+    if not text:
+        return ""
+    if draw.textlength(text, font=font) <= max_width:
+        return text
+    trimmed = text
+    while len(trimmed) > 1 and draw.textlength(trimmed + "…", font=font) > max_width:
+        trimmed = trimmed[:-1]
+    return trimmed + "…"
+
+
+def _rank_color(place: int) -> tuple:
+    if place == 1:
+        return COLOR_GOLD
+    if place == 2:
+        return COLOR_SILVER
+    if place == 3:
+        return COLOR_BRONZE
+    return COLOR_LABEL
+
+
+def _resolve_display_name(guild: Optional[discord.Guild], uid_str: str) -> str:
+    if guild is None:
+        return f"User {uid_str[-4:]}"
+    member = guild.get_member(int(uid_str))
+    return member.display_name if member else f"User {uid_str[-4:]}"
+
+
+def _find_user_rank(data: List[Tuple[str, float]], user_id: str) -> Optional[Tuple[int, float]]:
+    for idx, (uid, value) in enumerate(data, 1):
+        if uid == user_id:
+            return idx, value
+    return None
+
+
+def build_ranking_image(
+    voice_data: List[Tuple[str, float]],
+    msg_data: List[Tuple[str, int]],
+    guild: Optional[discord.Guild],
+    current_user_id: str,
+) -> io.BytesIO:
+    scale = 2
+    pad = 24 * scale
+    gap = 16 * scale
+    col_gap = 20 * scale
+    title_h = 52 * scale
+    title_row_h = 34 * scale
+    cols_header_h = 28 * scale
+    header_h = title_row_h + cols_header_h
+    row_h = 46 * scale
+    footer_h = 52 * scale
+    radius = 10 * scale
+
+    show_voice_footer = _find_user_rank(voice_data, current_user_id)
+    show_msg_footer = _find_user_rank(msg_data, current_user_id)
+    in_voice_top = any(uid == current_user_id for uid, _ in voice_data[:RANKING_TOP_N])
+    in_msg_top = any(uid == current_user_id for uid, _ in msg_data[:RANKING_TOP_N])
+    has_voice_footer = show_voice_footer is not None and not in_voice_top
+    has_msg_footer = show_msg_footer is not None and not in_msg_top
+
+    col_w = 420 * scale
+    width = pad * 2 + col_w * 2 + col_gap
+    rows_h = RANKING_TOP_N * row_h
+    footer_block = footer_h + 12 * scale if (has_voice_footer or has_msg_footer) else 0
+    height = pad + title_h + gap + header_h + rows_h + footer_block + pad
+
+    img = Image.new("RGBA", (width, height), COLOR_BG)
+    draw = ImageDraw.Draw(img)
+
+    font_title = _load_font(22 * scale)
+    font_header = _load_font(13 * scale)
+    font_row = _load_font(15 * scale)
+    font_value = _load_font(14 * scale)
+    font_footer = _load_font(13 * scale)
+
+    title = "Ranking aktywności serwera"
+    tw, th = _text_size(draw, title, font_title)
+    draw.text(((width - tw) // 2, pad), title, fill=COLOR_TEXT, font=font_title)
+
+    content_y = pad + title_h + gap
+    columns = [
+        {
+            "x": pad,
+            "title": "Kanał głosowy",
+            "accent": COLOR_ACCENT_VOICE,
+            "value_header": "Czas",
+            "data": voice_data[:RANKING_TOP_N],
+            "format_value": lambda v: format_duration(v),
+            "footer": show_voice_footer if has_voice_footer else None,
+            "footer_format": lambda rank, val: f"#{rank}  {_truncate_to_width(draw, _resolve_display_name(guild, current_user_id), font_footer, col_w // 2)}  ·  {format_duration(val)}",
+        },
+        {
+            "x": pad + col_w + col_gap,
+            "title": "Wiadomości",
+            "accent": COLOR_ACCENT_MSG,
+            "value_header": "Liczba",
+            "data": msg_data[:RANKING_TOP_N],
+            "format_value": lambda v: str(int(v)),
+            "footer": show_msg_footer if has_msg_footer else None,
+            "footer_format": lambda rank, val: f"#{rank}  {_truncate_to_width(draw, _resolve_display_name(guild, current_user_id), font_footer, col_w // 2)}  ·  {int(val)} {wiadomosci_label(int(val))}",
+        },
+    ]
+
+    for col in columns:
+        x = col["x"]
+        panel = (x, content_y, x + col_w, content_y + header_h + rows_h)
+        try:
+            draw.rounded_rectangle(panel, radius=radius, fill=COLOR_PANEL)
+        except Exception:
+            draw.rectangle(panel, fill=COLOR_PANEL)
+
+        accent_bar = (x, content_y, x + 4 * scale, content_y + header_h + rows_h)
+        draw.rectangle(accent_bar, fill=col["accent"])
+
+        draw.text((x + 16 * scale, content_y + 10 * scale), col["title"], fill=col["accent"], font=font_header)
+
+        header_y = content_y + title_row_h + 6 * scale
+        draw.text((x + 16 * scale, header_y), "#", fill=COLOR_MUTED, font=font_header)
+        draw.text((x + 52 * scale, header_y), "Użytkownik", fill=COLOR_MUTED, font=font_header)
+        value_w, _ = _text_size(draw, col["value_header"], font_header)
+        draw.text((x + col_w - value_w - 16 * scale, header_y), col["value_header"], fill=COLOR_MUTED, font=font_header)
+
+        draw.line(
+            (x + 12 * scale, content_y + header_h - 4 * scale, x + col_w - 12 * scale, content_y + header_h - 4 * scale),
+            fill=COLOR_HEADER,
+            width=max(1, scale),
+        )
+
+        for idx in range(RANKING_TOP_N):
+            row_y = content_y + header_h + idx * row_h
+            row_fill = COLOR_ROW if idx % 2 == 0 else COLOR_ROW_ALT
+            draw.rectangle((x + 8 * scale, row_y, x + col_w - 8 * scale, row_y + row_h), fill=row_fill)
+
+            if idx < len(col["data"]):
+                uid, value = col["data"][idx]
+                place = idx + 1
+                name = _resolve_display_name(guild, uid)
+                value_str = col["format_value"](value)
+
+                draw.text((x + 16 * scale, row_y + 14 * scale), str(place), fill=_rank_color(place), font=font_row)
+
+                name_max_w = col_w - 52 * scale - 100 * scale
+                name_draw = _truncate_to_width(draw, name, font_row, name_max_w)
+                draw.text((x + 52 * scale, row_y + 14 * scale), name_draw, fill=COLOR_TEXT, font=font_row)
+
+                vw, _ = _text_size(draw, value_str, font_value)
+                draw.text((x + col_w - vw - 16 * scale, row_y + 15 * scale), value_str, fill=COLOR_LABEL, font=font_value)
+            else:
+                draw.text((x + 52 * scale, row_y + 14 * scale), "—", fill=COLOR_MUTED, font=font_row)
+
+        if col["footer"]:
+            rank, val = col["footer"]
+            footer_y = content_y + header_h + rows_h + 8 * scale
+            footer_box = (x, footer_y, x + col_w, footer_y + footer_h)
+            try:
+                draw.rounded_rectangle(footer_box, radius=8 * scale, fill=(38, 40, 44, 255))
+            except Exception:
+                draw.rectangle(footer_box, fill=(38, 40, 44, 255))
+
+            footer_text = col["footer_format"](rank, val)
+            fw, fh = _text_size(draw, footer_text, font_footer)
+            draw.text((x + (col_w - fw) // 2, footer_y + (footer_h - fh) // 2), footer_text, fill=COLOR_SELF, font=font_footer)
+
+    if scale > 1:
+        img = img.resize((width // scale, height // scale), Image.Resampling.LANCZOS)
+
+    buffer = io.BytesIO()
+    img.save(buffer, format="PNG")
+    buffer.seek(0)
+    return buffer
+
 @tasks.loop(minutes=2)
 async def commit_voice_stats():
     global active_voice_sessions
@@ -183,7 +399,6 @@ async def setup_fun_commands(client: discord.Client, tree: app_commands.CommandT
     async def ranking(interaction: discord.Interaction):
         stats = load_stats()
 
-        # Collect users same as in /ranking
         all_user_ids = set(stats.keys())
         for uid in active_voice_sessions.keys():
             all_user_ids.add(str(uid))
@@ -192,7 +407,6 @@ async def setup_fun_commands(client: discord.Client, tree: app_commands.CommandT
             await interaction.response.send_message("Brak danych w rankingu.", ephemeral=True)
             return
 
-        # Prepare data
         voice_data = []
         msg_data = []
         for uid_str in all_user_ids:
@@ -202,8 +416,7 @@ async def setup_fun_commands(client: discord.Client, tree: app_commands.CommandT
 
             uid_int = int(uid_str)
             if uid_int in active_voice_sessions:
-                current_session_duration = time.time() - active_voice_sessions[uid_int]
-                v_time += current_session_duration
+                v_time += time.time() - active_voice_sessions[uid_int]
 
             if v_time > 0:
                 voice_data.append((uid_str, v_time))
@@ -213,170 +426,25 @@ async def setup_fun_commands(client: discord.Client, tree: app_commands.CommandT
         voice_data.sort(key=lambda x: x[1], reverse=True)
         msg_data.sort(key=lambda x: x[1], reverse=True)
 
-        # Load background image
-        base_dir = os.path.dirname(__file__)
-        bg_path = os.path.join(base_dir, "..", "images", "ranking", "discordranking.png")
-        bg_path = os.path.normpath(bg_path)
-        if not os.path.exists(bg_path):
-            await interaction.response.send_message("Brak obrazka tła: images/ranking/discordranking.png", ephemeral=True)
+        if not voice_data and not msg_data:
+            await interaction.response.send_message("Brak danych w rankingu.", ephemeral=True)
             return
 
         try:
-            img = Image.open(bg_path).convert("RGBA").copy()
-        except Exception as e:
-            await interaction.response.send_message(f"Błąd przy otwieraniu obrazka: {e}", ephemeral=True)
-            return
-
-        draw = ImageDraw.Draw(img)
-        font_path = os.path.join(os.path.dirname(__file__), "..", "images", "font", "roboto", "Roboto-Medium.ttf")
-        font_path = os.path.normpath(font_path)
-
-        def fit_font_for_width(text, box_w, init_size=32, min_size=10, font_path=font_path):
-            size = init_size
-            try:
-                while size >= min_size:
-                    font = ImageFont.truetype(font_path, size)
-                    tw = draw.textlength(text, font=font)
-                    if tw <= box_w - 6:
-                        return font
-                    size -= 1
-            except Exception:
-                return ImageFont.load_default()
-            return ImageFont.load_default()
-
-        # Columns (based on provided image-map coords)
-        # voice name col, voice time col, text name col, text count col
-        name_col = (129, 554)
-        voice_time_col = (569, 704)
-        text_name_col = (830, 1245)
-        text_count_col = (1263, 1425)
-
-        # Rows Y ranges for top5 (y1,y2)
-        rows = [(436,487),(498,549),(560,613),(624,676),(687,737)]
-
-        # Draw top5 voice and messages
-        for idx in range(5):
-            # Voice column
-            if idx < len(voice_data):
-                uid, duration = voice_data[idx]
-                member = interaction.guild.get_member(int(uid))
-                name = member.display_name if member else f"User {uid}"
-                time_str = format_duration(duration)
-
-                y_top, y_bot = rows[idx]
-                box_h = y_bot - y_top
-
-                # name
-                box_w = name_col[1] - name_col[0]
-                font_name = fit_font_for_width(name, box_w, init_size=28)
-                bbox = draw.textbbox((0,0), name, font=font_name)
-                th = bbox[3]-bbox[1]
-                y_text = y_top + (box_h - th)//2
-                draw.text((name_col[0]+6, y_text), name, fill="white", font=font_name)
-
-                # time
-                box_w = voice_time_col[1] - voice_time_col[0]
-                font_time = fit_font_for_width(time_str, box_w, init_size=22)
-                bbox = draw.textbbox((0,0), time_str, font=font_time)
-                tw = bbox[2]-bbox[0]
-                th = bbox[3]-bbox[1]
-                x_time = voice_time_col[0] + (box_w - tw)//2
-                y_time = y_top + (box_h - th)//2
-                draw.text((x_time, y_time), time_str, fill="white", font=font_time)
-
-            # Messages column
-            if idx < len(msg_data):
-                uid, count = msg_data[idx]
-                member = interaction.guild.get_member(int(uid))
-                name = member.display_name if member else f"User {uid}"
-                count_str = str(count)
-
-                y_top, y_bot = rows[idx]
-                box_h = y_bot - y_top
-
-                # name
-                box_w = text_name_col[1] - text_name_col[0]
-                font_name2 = fit_font_for_width(name, box_w, init_size=28)
-                bbox = draw.textbbox((0,0), name, font=font_name2)
-                th = bbox[3]-bbox[1]
-                y_text = y_top + (box_h - th)//2
-                draw.text((text_name_col[0]+6, y_text), name, fill="white", font=font_name2)
-
-                # count
-                box_w = text_count_col[1] - text_count_col[0]
-                font_cnt = fit_font_for_width(count_str, box_w, init_size=22)
-                bbox = draw.textbbox((0,0), count_str, font=font_cnt)
-                tw = bbox[2]-bbox[0]
-                th = bbox[3]-bbox[1]
-                x_cnt = text_count_col[0] + (box_w - tw)//2
-                y_cnt = y_top + (box_h - th)//2
-                draw.text((x_cnt, y_cnt), count_str, fill="white", font=font_cnt)
-
-        # If user not in top5, show their position in bottom area
-        curr_user_id = str(interaction.user.id)
-        # Voice bottom boxes
-        bottom_name_col = (344, 605)
-        bottom_time_col = (615, 702)
-        bottom_text_name_col = (867, 1151)
-        bottom_text_count_col = (1165, 1263)
-        bottom_y_top = 894
-        bottom_y_bot = 943
-        box_h = bottom_y_bot - bottom_y_top
-
-        # voice position
-        if not any(uid == curr_user_id for uid, _ in voice_data):
-            for idx, (uid, duration) in enumerate(voice_data, 1):
-                if uid == curr_user_id:
-                    name = interaction.user.display_name
-                    time_str = format_duration(duration)
-
-                    # name
-                    box_w = bottom_name_col[1] - bottom_name_col[0]
-                    font_nameb = fit_font_for_width(name, box_w, init_size=24)
-                    bbox = draw.textbbox((0,0), name, font=font_nameb)
-                    th = bbox[3]-bbox[1]
-                    y_text = bottom_y_top + (box_h - th)//2
-                    draw.text((bottom_name_col[0]+6, y_text), name, fill="white", font=font_nameb)
-
-                    # time
-                    box_w = bottom_time_col[1] - bottom_time_col[0]
-                    font_timeb = fit_font_for_width(time_str, box_w, init_size=20)
-                    bbox = draw.textbbox((0,0), time_str, font=font_timeb)
-                    tw = bbox[2]-bbox[0]
-                    x_time = bottom_time_col[0] + (box_w - tw)//2
-                    y_time = bottom_y_top + (box_h - (bbox[3]-bbox[1]))//2
-                    draw.text((x_time, y_time), time_str, fill="white", font=font_timeb)
-                    break
-
-        # messages position
-        if not any(uid == curr_user_id for uid, _ in msg_data):
-            for idx, (uid, count) in enumerate(msg_data, 1):
-                if uid == curr_user_id:
-                    name = interaction.user.display_name
-                    count_str = str(count)
-
-                    box_w = bottom_text_name_col[1] - bottom_text_name_col[0]
-                    font_nameb = fit_font_for_width(name, box_w, init_size=24)
-                    bbox = draw.textbbox((0,0), name, font=font_nameb)
-                    th = bbox[3]-bbox[1]
-                    y_text = bottom_y_top + (box_h - th)//2
-                    draw.text((bottom_text_name_col[0]+6, y_text), name, fill="white", font=font_nameb)
-
-                    box_w = bottom_text_count_col[1] - bottom_text_count_col[0]
-                    font_cntb = fit_font_for_width(count_str, box_w, init_size=20)
-                    bbox = draw.textbbox((0,0), count_str, font=font_cntb)
-                    tw = bbox[2]-bbox[0]
-                    x_cnt = bottom_text_count_col[0] + (box_w - tw)//2
-                    y_cnt = bottom_y_top + (box_h - (bbox[3]-bbox[1]))//2
-                    draw.text((x_cnt, y_cnt), count_str, fill="white", font=font_cntb)
-                    break
-
-        # Save to buffer and send
-        buffer = io.BytesIO()
-        img.save(buffer, format="PNG")
-        buffer.seek(0)
-        file = discord.File(fp=buffer, filename="discord_ranking.png")
-        await interaction.response.send_message(file=file)
+            buffer = build_ranking_image(
+                voice_data,
+                msg_data,
+                interaction.guild,
+                str(interaction.user.id),
+            )
+            file = discord.File(fp=buffer, filename="ranking.png")
+            await interaction.response.send_message(file=file)
+        except Exception as exc:
+            logging.error(f"Failed to generate ranking image: {exc}")
+            await interaction.response.send_message(
+                f"Nie udało się wygenerować rankingu: {exc}",
+                ephemeral=True,
+            )
     
     @tree.command(name="avatar", description="Wyświetla avatar użytkownika", guild=guild_obj)
     @app_commands.describe(user="Użytkownik, którego avatar chcesz zobaczyć (opcjonalnie)")
