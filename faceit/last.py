@@ -326,7 +326,7 @@ async def get_last_match_stats(nickname, guild=None):
         if mk.get("5k", 0) > 0:
             mk_parts.append(f"5x: `{mk['5k']}`")
 
-        mk_str = f"**Kills:** {' | '.join(mk_parts)}\n" if mk_parts else ""
+        mk_str = f"**Kills:** {' ▫️ '.join(mk_parts)}\n" if mk_parts else ""
 
         adv_stats = (
             f"{mk_str}"
@@ -342,7 +342,7 @@ async def get_last_match_stats(nickname, guild=None):
 
     match_link = f"https://www.faceit.com/en/cs2/room/{match_id}/scoreboard"
     embed.add_field(name="", value=f"🔗 [Lobby]({match_link})", inline=False)
-    embed.set_footer(text="📊 Statystyki ostatniego meczu | Sprawdź swoje pod /last")
+    #embed.set_footer(text="📊 Statystyki ostatniego meczu | Sprawdź swoje pod /last")
     return embed
 
 

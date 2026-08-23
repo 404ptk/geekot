@@ -30,6 +30,7 @@ COLOR_GOLD = (255, 200, 87, 255)
 COLOR_SILVER = (192, 202, 216, 255)
 COLOR_BRONZE = (205, 127, 50, 255)
 COLOR_SELF = (57, 211, 83, 255)
+COLOR_SELF_TOP = (255, 152, 64, 255)
 
 def is_voice_active(state: discord.VoiceState):
     """Checks if the user's voice time should be counted."""
@@ -301,7 +302,8 @@ def build_ranking_image(
 
                 name_max_w = col_w - 52 * scale - 100 * scale
                 name_draw = _truncate_to_width(draw, name, font_row, name_max_w)
-                draw.text((x + 52 * scale, row_y + 14 * scale), name_draw, fill=COLOR_TEXT, font=font_row)
+                name_color = COLOR_SELF_TOP if uid == current_user_id else COLOR_TEXT
+                draw.text((x + 52 * scale, row_y + 14 * scale), name_draw, fill=name_color, font=font_row)
 
                 vw, _ = _text_size(draw, value_str, font_value)
                 draw.text((x + col_w - vw - 16 * scale, row_y + 15 * scale), value_str, fill=COLOR_LABEL, font=font_value)

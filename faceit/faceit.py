@@ -66,6 +66,7 @@ def register_faceit_command(tree, guild, faceit_nick_autocomplete):
         )
 
         total_kills, total_deaths, total_assists, total_hs, total_wins, total_adr = 0, 0, 0, 0, 0, 0
+        total_mvps = 0
         total_clutch_wins, total_clutch_count = 0, 0
         total_flash_success, total_flash_count = 0, 0
         total_entry_wins, total_entry_count = 0, 0
@@ -89,6 +90,7 @@ def register_faceit_command(tree, guild, faceit_nick_autocomplete):
             assists = int(match.get("stats", {}).get("Assists", 0))
             hs = int(match.get("stats", {}).get("Headshots %", 0))
             adr = float(match.get("stats", {}).get("ADR", 0))
+            mvps = int(match.get("stats", {}).get("MVPs", 0))
 
             kd_ratio = kills / deaths if deaths > 0 else float(kills)
             kda_ratio = f"{kills}/{deaths}/{assists}"
@@ -98,6 +100,7 @@ def register_faceit_command(tree, guild, faceit_nick_autocomplete):
             total_assists += assists
             total_hs += hs
             total_adr += adr
+            total_mvps += mvps
             if result == "1":
                 total_wins += 1
 
@@ -214,20 +217,21 @@ def register_faceit_command(tree, guild, faceit_nick_autocomplete):
         win_percentage = (total_wins / match_count) * 100 if match_count else 0
         avg_kd = float(avg_kills / avg_deaths) if avg_deaths else 0
         avg_adr = float(total_adr / match_count) if match_count else 0
+        avg_mvps = total_mvps / match_count if match_count else 0
         
         clutch_percentage = (total_clutch_wins / total_clutch_count * 100) if total_clutch_count > 0 else 0
         flash_percentage = (total_flash_success / total_flash_count * 100) if total_flash_count > 0 else 0
         entry_percentage = (total_entry_wins / total_entry_count * 100) if total_entry_count > 0 else 0
         avg_utility = total_utility_dmg / match_count if match_count else 0
         
-        avg_stats_value = f"**K/D:** {avg_kd:.2f} | **HS:** {avg_hs:.0f}% | **ADR:** {avg_adr:.1f}\n"
-        avg_stats_value += f"**Winrate:** {win_percentage:.0f}%\n"
+        avg_stats_value = f"**K/D:** {avg_kd:.2f} ▫️ **HS:** {avg_hs:.0f}% ▫️ **ADR:** {avg_adr:.1f}\n"
+        avg_stats_value += f"**Winrate:** {win_percentage:.0f}% ▫️ **MVP:** {avg_mvps:.2f}\n"
         if total_entry_count > 0:
-            avg_stats_value += f"**Entry:** {entry_percentage:.0f}% ({total_entry_count}) |"
+            avg_stats_value += f"**Entry:** {entry_percentage:.0f}% ({total_entry_count}) ▫️"
         if total_clutch_count > 0:
             avg_stats_value += f" **Clutche:** {clutch_percentage:.0f}% ({total_clutch_count})\n"
         if total_flash_count > 0:
-            avg_stats_value += f"**Flashe:** {flash_percentage:.0f}% ({total_flash_count}) | "
+            avg_stats_value += f"**Flashe:** {flash_percentage:.0f}% ({total_flash_count}) ▫️ "
         if match_count > 0:
             avg_stats_value += f" **Utility:** {avg_utility:.1f}"
         
@@ -240,6 +244,7 @@ def register_faceit_command(tree, guild, faceit_nick_autocomplete):
         matches20 = fu.get_faceit_player_matches(player_id, limit=20)
         if matches20:
             total_kills20 = total_deaths20 = total_hs20 = total_wins20 = 0
+            total_mvps20 = 0
             total_adr20 = 0.0
             match_count20 = len(matches20)
 
@@ -249,11 +254,13 @@ def register_faceit_command(tree, guild, faceit_nick_autocomplete):
                 deaths20 = int(match.get("stats", {}).get("Deaths", 0))
                 hs20 = int(match.get("stats", {}).get("Headshots %", 0))
                 adr20 = float(match.get("stats", {}).get("ADR", 0))
+                mvps20 = int(match.get("stats", {}).get("MVPs", 0))
 
                 total_kills20 += kills20
                 total_deaths20 += deaths20
                 total_hs20 += hs20
                 total_adr20 += adr20
+                total_mvps20 += mvps20
                 if result20 == "1":
                     total_wins20 += 1
 
@@ -262,11 +269,12 @@ def register_faceit_command(tree, guild, faceit_nick_autocomplete):
             avg_hs20 = total_hs20 / match_count20 if match_count20 else 0
             avg_kd20 = float(avg_kills20 / avg_deaths20) if avg_deaths20 else 0
             avg_adr20 = float(total_adr20 / match_count20) if match_count20 else 0
+            avg_mvps20 = total_mvps20 / match_count20 if match_count20 else 0
             win_percentage20 = (total_wins20 / match_count20) * 100 if match_count20 else 0
 
             embed.add_field(
                 name="📊 Ostatnie 20 gier",
-                value=f"**K/D:** {avg_kd20:.2f} | **HS:** {avg_hs20:.0f}% | **ADR:** {avg_adr20:.1f}\n**Winrate:** {win_percentage20:.0f}%",
+                value=f"**K/D:** {avg_kd20:.2f} ▫️ **HS:** {avg_hs20:.0f}% ▫️ **ADR:** {avg_adr20:.1f}\n**Winrate:** {win_percentage20:.0f}% ▫️ **MVP:** {avg_mvps20:.2f}",
                 inline=False,
             )
 
