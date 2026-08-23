@@ -12,7 +12,7 @@ from discord import app_commands
 from discord.ext import tasks
 from PIL import Image, ImageDraw, ImageFont
 
-from commands.fun import is_voice_active
+from commands.fun import is_voice_countable, iter_affected_voice_members
 
 DATA_FILE = "txt/aktywnosc.json"
 WINDOW_DAYS = 30
@@ -454,6 +454,20 @@ async def commit_daily_voice():
         save_activity(data)
 
 
+def apply_daily_voice_session(member: discord.Member, now: float) -> None:
+    user_id = member.id
+    should_count = is_voice_countable(member.voice)
+
+    if should_count:
+        if user_id not in active_voice_sessions:
+            active_voice_sessions[user_id] = now
+        return
+
+    start_ts = active_voice_sessions.pop(user_id, None)
+    if start_ts is not None:
+        credit_session(user_id, start_ts, now)
+
+
 def _scan_current_voice(guild: Optional[discord.Guild]) -> None:
     if guild is None:
         return
@@ -463,8 +477,7 @@ def _scan_current_voice(guild: Optional[discord.Guild]) -> None:
         for member in channel.members:
             if member.bot or not member.voice:
                 continue
-            if is_voice_active(member.voice):
-                active_voice_sessions[member.id] = now
+            apply_daily_voice_session(member, now)
 
 
 async def setup_aktywnosc_commands(client: discord.Client, tree: app_commands.CommandTree, guild_id: int):
@@ -478,16 +491,10 @@ async def setup_aktywnosc_commands(client: discord.Client, tree: app_commands.Co
         if member.bot or member.guild is None or member.guild.id != guild_id:
             return
 
-        was_active = is_voice_active(before)
-        is_active = is_voice_active(after)
         now = time.time()
 
-        if not was_active and is_active:
-            active_voice_sessions[member.id] = now
-        elif was_active and not is_active:
-            start_ts = active_voice_sessions.pop(member.id, None)
-            if start_ts is not None:
-                credit_session(member.id, start_ts, now)
+        for affected in iter_affected_voice_members(before, after):
+            apply_daily_voice_session(affected, now)
 
     client.add_listener(listener_on_voice_state_update, "on_voice_state_update")
 

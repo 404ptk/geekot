@@ -24,6 +24,44 @@ def is_voice_active(state: discord.VoiceState):
         return False
     return True
 
+
+def active_humans_in_channel(channel) -> int:
+    if channel is None:
+        return 0
+    return sum(1 for member in channel.members if not member.bot)
+
+
+def is_voice_countable(state: discord.VoiceState) -> bool:
+    """Voice time counts only when unmuted and not alone on the channel."""
+    if not is_voice_active(state):
+        return False
+    return active_humans_in_channel(state.channel) >= 2
+
+
+def iter_affected_voice_members(before: discord.VoiceState, after: discord.VoiceState):
+    seen_channels = set()
+    for channel in (before.channel, after.channel):
+        if channel is None or channel.id in seen_channels:
+            continue
+        seen_channels.add(channel.id)
+        for member in channel.members:
+            if not member.bot:
+                yield member
+
+
+def apply_voice_session(member: discord.Member, now: float) -> None:
+    user_id = member.id
+    should_count = is_voice_countable(member.voice)
+
+    if should_count:
+        if user_id not in active_voice_sessions:
+            active_voice_sessions[user_id] = now
+        return
+
+    if user_id in active_voice_sessions:
+        start_time = active_voice_sessions.pop(user_id)
+        update_voice_time(user_id, now - start_time)
+
 def load_stats():
     if not os.path.exists(STATS_FILE):
         return {}
@@ -118,22 +156,9 @@ async def setup_fun_commands(client: discord.Client, tree: app_commands.CommandT
         update_message_count(message.author.id)
 
     async def listener_on_voice_state_update(member: discord.Member, before: discord.VoiceState, after: discord.VoiceState):
-        user_id = member.id
         now = time.time()
-
-        was_active = is_voice_active(before)
-        is_active = is_voice_active(after)
-
-        # Transition: Not active -> Active (Joined or unmuted)
-        if not was_active and is_active:
-            active_voice_sessions[user_id] = now
-        
-        # Transition: Active -> Not active (Left, moved to AFK, or muted)
-        elif was_active and not is_active:
-            if user_id in active_voice_sessions:
-                start_time = active_voice_sessions.pop(user_id)
-                duration = now - start_time
-                update_voice_time(user_id, duration)
+        for affected in iter_affected_voice_members(before, after):
+            apply_voice_session(affected, now)
 
     # Rejestracja listenerów
     client.add_listener(listener_on_message, 'on_message')
@@ -147,10 +172,11 @@ async def setup_fun_commands(client: discord.Client, tree: app_commands.CommandT
     # Wymaga obiektu gildii, pobieramy go z clienta
     guild = client.get_guild(guild_id)
     if guild:
+        now = time.time()
         for vc in guild.voice_channels:
             for member in vc.members:
-                if not member.bot and is_voice_active(member.voice):
-                    active_voice_sessions[member.id] = time.time()
+                if not member.bot:
+                    apply_voice_session(member, now)
 
     # --- Komendy ---
     @tree.command(name="ranking", description="Wyświetla ranking aktywności serwera", guild=guild_obj)
