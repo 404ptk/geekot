@@ -50,16 +50,15 @@ def get_faceit_player_data(nickname):
     else:
         return None
 
-def get_faceit_player_matches(player_id, limit=5):
+def get_faceit_player_matches(player_id, limit=5, offset=0):
     game_id = "cs2"
-    url = f'https://open.faceit.com/data/v4/players/{player_id}/games/{game_id}/stats?limit={limit}'
-    headers = {'Authorization': f'Bearer {FACEIT_API_KEY}'}
+    url = f"https://open.faceit.com/data/v4/players/{player_id}/games/{game_id}/stats?limit={limit}&offset={offset}"
+    headers = {"Authorization": f"Bearer {FACEIT_API_KEY}"}
     response = requests.get(url, headers=headers)
     if response.status_code == 200:
-        return response.json().get('items', [])
-    else:
-        print("Błąd połączenia z Faceit API:", response.status_code)
-        return None
+        return response.json().get("items", [])
+    print("Błąd połączenia z Faceit API:", response.status_code)
+    return None
 
 def save_faceit_ranking(player_stats):
     with open(FACEIT_RANKING_FILE, "w") as file:

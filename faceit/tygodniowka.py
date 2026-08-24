@@ -31,21 +31,33 @@ def get_matches_in_period(player_id, start_ts, end_ts):
     """
     import faceit_utils as fu
 
-    limit = 20  # Reduced from 50 to avoid too many API calls
-    matches = fu.get_faceit_player_matches(player_id, limit=limit)
-
-    if not matches:
-        return []
-
+    page_size = 100  # Faceit API max per request
+    max_pages = 5
+    offset = 0
     filtered_matches = []
-    for match in matches:
-        match_stats = match.get("stats", {})
-        finished_at_ms = match_stats.get("Match Finished At")
 
-        if finished_at_ms:
+    for _ in range(max_pages):
+        matches = fu.get_faceit_player_matches(player_id, limit=page_size, offset=offset)
+        if not matches:
+            break
+
+        reached_before_period = False
+        for match in matches:
+            match_stats = match.get("stats", {})
+            finished_at_ms = match_stats.get("Match Finished At")
+            if not finished_at_ms:
+                continue
+
             finished_at_sec = int(finished_at_ms) / 1000.0
             if start_ts <= finished_at_sec <= end_ts:
                 filtered_matches.append(match)
+            elif finished_at_sec < start_ts:
+                reached_before_period = True
+                break
+
+        if reached_before_period or len(matches) < page_size:
+            break
+        offset += page_size
 
     return filtered_matches
 
@@ -308,7 +320,7 @@ def create_weekly_stats_embed(start_ts, end_ts, snapshot_elos, title, descriptio
         canonical_map = {n.lower(): n for n in fu.player_nicknames}
 
         if total >= 1:
-            matches_to_check = player.get('matches', [])[:15]
+            matches_to_check = player.get("matches", [])
             for m in matches_to_check:
                 match_id = _get_match_id(m)
                 if not match_id:
