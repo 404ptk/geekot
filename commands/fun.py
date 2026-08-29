@@ -5,6 +5,7 @@ import json
 import os
 import time
 import logging
+import threading
 from datetime import timedelta
 from typing import List, Optional, Tuple
 import io
@@ -14,6 +15,9 @@ STATS_FILE = "txt/server_stats.json"
 IGNORED_CHANNEL_ID = 710042604720488520
 active_voice_sessions = {}
 RANKING_TOP_N = 5
+_stats_lock = threading.Lock()
+CLIENT_REF: Optional[discord.Client] = None
+GUILD_ID: Optional[int] = None
 
 # Discord embed background (#2b2d31) — spójnie z /aktywnosc
 COLOR_BG = (43, 45, 49, 255)
@@ -68,6 +72,50 @@ def iter_affected_voice_members(before: discord.VoiceState, after: discord.Voice
                 yield member
 
 
+def get_member_voice_state(user_id: int) -> Optional[discord.VoiceState]:
+    if CLIENT_REF is None or GUILD_ID is None:
+        return None
+
+    guild = CLIENT_REF.get_guild(GUILD_ID)
+    if guild is None:
+        return None
+
+    member = guild.get_member(user_id)
+    if member is None:
+        return None
+
+    return member.voice
+
+
+def credit_voice_time(stats: dict, user_id: int, duration: float) -> dict:
+    if duration <= 1:
+        return stats
+
+    user_id_str = str(user_id)
+    if user_id_str not in stats:
+        stats[user_id_str] = {"messages": 0, "voice_time": 0}
+
+    stats[user_id_str]["voice_time"] = stats[user_id_str].get("voice_time", 0) + duration
+    return stats
+
+
+def flush_voice_session(user_id: int, now: float, stats: Optional[dict] = None) -> float:
+    start_time = active_voice_sessions.pop(user_id, None)
+    if start_time is None:
+        return 0.0
+
+    duration = now - start_time
+    if stats is None:
+        with _stats_lock:
+            loaded = load_stats()
+            loaded = credit_voice_time(loaded, user_id, duration)
+            save_stats(loaded)
+        return max(duration, 0.0) if duration > 1 else 0.0
+
+    credit_voice_time(stats, user_id, duration)
+    return max(duration, 0.0) if duration > 1 else 0.0
+
+
 def apply_voice_session(member: discord.Member, now: float) -> None:
     user_id = member.id
     should_count = is_voice_countable(member.voice)
@@ -77,9 +125,7 @@ def apply_voice_session(member: discord.Member, now: float) -> None:
             active_voice_sessions[user_id] = now
         return
 
-    if user_id in active_voice_sessions:
-        start_time = active_voice_sessions.pop(user_id)
-        update_voice_time(user_id, now - start_time)
+    flush_voice_session(user_id, now)
 
 def load_stats():
     if not os.path.exists(STATS_FILE):
@@ -108,14 +154,10 @@ def update_message_count(user_id):
     save_stats(stats)
 
 def update_voice_time(user_id, duration):
-    stats = load_stats()
-    user_id_str = str(user_id)
-    if user_id_str not in stats:
-        stats[user_id_str] = {"messages": 0, "voice_time": 0}
-    
-    current_time = stats[user_id_str].get("voice_time", 0)
-    stats[user_id_str]["voice_time"] = current_time + duration
-    save_stats(stats)
+    with _stats_lock:
+        stats = load_stats()
+        stats = credit_voice_time(stats, user_id, duration)
+        save_stats(stats)
 
 def format_duration(seconds):
     td = timedelta(seconds=int(seconds))
@@ -333,31 +375,34 @@ def build_ranking_image(
 
 @tasks.loop(minutes=2)
 async def commit_voice_stats():
-    global active_voice_sessions
     if not active_voice_sessions:
         return
-        
-    stats = load_stats()
+
     now = time.time()
-    changed = False
-    
-    for user_id, start_time in list(active_voice_sessions.items()):
-        duration = now - start_time
-        # Zapisz tylko jeśli minął jakiś sensowny czas (np. > 1s)
-        if duration > 1:
-            uid_str = str(user_id)
-            if uid_str not in stats:
-                stats[uid_str] = {"messages": 0, "voice_time": 0}
-            
-            stats[uid_str]["voice_time"] = stats[uid_str].get("voice_time", 0) + duration
-            # Zaktualizuj czas startu na "teraz", żeby nie liczyć podwójnie
-            active_voice_sessions[user_id] = now
-            changed = True
-            
-    if changed:
-        save_stats(stats)
+    with _stats_lock:
+        stats = load_stats()
+        changed = False
+
+        for user_id, start_time in list(active_voice_sessions.items()):
+            voice_state = get_member_voice_state(user_id)
+            if voice_state is None or not is_voice_countable(voice_state):
+                if flush_voice_session(user_id, now, stats) > 0:
+                    changed = True
+                continue
+
+            duration = now - start_time
+            if duration > 1:
+                credit_voice_time(stats, user_id, duration)
+                active_voice_sessions[user_id] = now
+                changed = True
+
+        if changed:
+            save_stats(stats)
 
 async def setup_fun_commands(client: discord.Client, tree: app_commands.CommandTree, guild_id: int):
+    global CLIENT_REF, GUILD_ID
+    CLIENT_REF = client
+    GUILD_ID = guild_id
     guild_obj = discord.Object(id=guild_id)
 
     # --- Listeners ---
@@ -391,7 +436,8 @@ async def setup_fun_commands(client: discord.Client, tree: app_commands.CommandT
     guild = client.get_guild(guild_id)
     if guild:
         now = time.time()
-        for vc in guild.voice_channels:
+        voice_channels = list(guild.voice_channels) + list(getattr(guild, "stage_channels", []))
+        for vc in voice_channels:
             for member in vc.members:
                 if not member.bot:
                     apply_voice_session(member, now)
