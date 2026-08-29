@@ -12,7 +12,7 @@ from discord import app_commands
 from discord.ext import tasks
 from PIL import Image, ImageDraw, ImageFont
 
-from commands.fun import is_voice_countable, iter_affected_voice_members
+from commands.fun import get_member_in_voice, is_voice_countable, iter_affected_voice_members
 
 DATA_FILE = "txt/aktywnosc.json"
 WINDOW_DAYS = 30
@@ -68,6 +68,8 @@ MONTHS_GENITIVE = {
 
 _file_lock = threading.Lock()
 active_voice_sessions: Dict[int, float] = {}
+CLIENT_REF: Optional[discord.Client] = None
+GUILD_ID: Optional[int] = None
 
 
 def now_warsaw() -> datetime:
@@ -141,6 +143,41 @@ def credit_session(user_id: int, start_ts: float, end_ts: float) -> None:
         for day, seconds in chunks:
             add_seconds(data, user_id, day, seconds)
         save_activity(data)
+
+
+def flush_daily_voice_session(user_id: int, now: float, data: Optional[dict] = None) -> float:
+    start_ts = active_voice_sessions.pop(user_id, None)
+    if start_ts is None:
+        return 0.0
+
+    duration = now - start_ts
+    if duration <= 1:
+        return 0.0
+
+    if data is None:
+        credit_session(user_id, start_ts, now)
+    else:
+        for day, seconds in iter_session_chunks(start_ts, now):
+            add_seconds(data, user_id, day, seconds)
+
+    return duration
+
+
+def reconcile_daily_voice_sessions(guild: Optional[discord.Guild], now: float, data: Optional[dict] = None) -> bool:
+    changed = False
+
+    for user_id in list(active_voice_sessions.keys()):
+        if guild is None:
+            if flush_daily_voice_session(user_id, now, data) > 0:
+                changed = True
+            continue
+
+        member = get_member_in_voice(guild, user_id)
+        if member is None or not is_voice_countable(member.voice):
+            if flush_daily_voice_session(user_id, now, data) > 0:
+                changed = True
+
+    return changed
 
 
 def seconds_by_day_for_user(user_id: int) -> Dict[str, float]:
@@ -443,15 +480,28 @@ def build_embed(member: discord.Member, stats: dict) -> discord.Embed:
 async def commit_daily_voice():
     if not active_voice_sessions:
         return
+
     now = time.time()
+    guild = CLIENT_REF.get_guild(GUILD_ID) if CLIENT_REF and GUILD_ID else None
+
     with _file_lock:
         data = load_activity()
+        changed = reconcile_daily_voice_sessions(guild, now, data)
+
         for user_id, start_ts in list(active_voice_sessions.items()):
+            member = get_member_in_voice(guild, user_id) if guild else None
+            if member is None or not is_voice_countable(member.voice):
+                if flush_daily_voice_session(user_id, now, data) > 0:
+                    changed = True
+                continue
+
             for day, seconds in iter_session_chunks(start_ts, now):
                 add_seconds(data, user_id, day, seconds)
-            if user_id in active_voice_sessions:
-                active_voice_sessions[user_id] = now
-        save_activity(data)
+            active_voice_sessions[user_id] = now
+            changed = True
+
+        if changed:
+            save_activity(data)
 
 
 def apply_daily_voice_session(member: discord.Member, now: float) -> None:
@@ -463,9 +513,7 @@ def apply_daily_voice_session(member: discord.Member, now: float) -> None:
             active_voice_sessions[user_id] = now
         return
 
-    start_ts = active_voice_sessions.pop(user_id, None)
-    if start_ts is not None:
-        credit_session(user_id, start_ts, now)
+    flush_daily_voice_session(user_id, now)
 
 
 def _scan_current_voice(guild: Optional[discord.Guild]) -> None:
@@ -481,6 +529,9 @@ def _scan_current_voice(guild: Optional[discord.Guild]) -> None:
 
 
 async def setup_aktywnosc_commands(client: discord.Client, tree: app_commands.CommandTree, guild_id: int):
+    global CLIENT_REF, GUILD_ID
+    CLIENT_REF = client
+    GUILD_ID = guild_id
     guild_obj = discord.Object(id=guild_id)
 
     async def listener_on_voice_state_update(
@@ -492,8 +543,13 @@ async def setup_aktywnosc_commands(client: discord.Client, tree: app_commands.Co
             return
 
         now = time.time()
+        apply_daily_voice_session(member, now)
 
+        seen_ids = {member.id}
         for affected in iter_affected_voice_members(before, after):
+            if affected.id in seen_ids:
+                continue
+            seen_ids.add(affected.id)
             apply_daily_voice_session(affected, now)
 
     client.add_listener(listener_on_voice_state_update, "on_voice_state_update")
@@ -524,6 +580,13 @@ async def setup_aktywnosc_commands(client: discord.Client, tree: app_commands.Co
         if target.bot:
             await interaction.response.send_message("Boty nie są śledzone.", ephemeral=True)
             return
+
+        now = time.time()
+        guild = interaction.guild or client.get_guild(guild_id)
+        with _file_lock:
+            data = load_activity()
+            if reconcile_daily_voice_sessions(guild, now, data):
+                save_activity(data)
 
         stats = compute_stats(seconds_by_day_for_user(target.id))
         embed = build_embed(target, stats)

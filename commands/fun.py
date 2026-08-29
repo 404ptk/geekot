@@ -36,9 +36,9 @@ COLOR_BRONZE = (205, 127, 50, 255)
 COLOR_SELF = (57, 211, 83, 255)
 COLOR_SELF_TOP = (255, 152, 64, 255)
 
-def is_voice_active(state: discord.VoiceState):
+def is_voice_active(state: Optional[discord.VoiceState]) -> bool:
     """Checks if the user's voice time should be counted."""
-    if state.channel is None:
+    if state is None or state.channel is None:
         return False
     if state.afk:
         return False
@@ -54,7 +54,7 @@ def active_humans_in_channel(channel) -> int:
     return sum(1 for member in channel.members if not member.bot)
 
 
-def is_voice_countable(state: discord.VoiceState) -> bool:
+def is_voice_countable(state: Optional[discord.VoiceState]) -> bool:
     """Voice time counts only when unmuted and not alone on the channel."""
     if not is_voice_active(state):
         return False
@@ -72,19 +72,35 @@ def iter_affected_voice_members(before: discord.VoiceState, after: discord.Voice
                 yield member
 
 
-def get_member_voice_state(user_id: int) -> Optional[discord.VoiceState]:
-    if CLIENT_REF is None or GUILD_ID is None:
-        return None
+def get_member_in_voice(guild: discord.Guild, user_id: int) -> Optional[discord.Member]:
+    channels = list(guild.voice_channels) + list(getattr(guild, "stage_channels", []))
+    for channel in channels:
+        for member in channel.members:
+            if member.id == user_id and not member.bot:
+                return member
+    return None
 
-    guild = CLIENT_REF.get_guild(GUILD_ID)
-    if guild is None:
-        return None
 
-    member = guild.get_member(user_id)
-    if member is None:
-        return None
+def is_user_in_guild_voice(guild: discord.Guild, user_id: int) -> bool:
+    return get_member_in_voice(guild, user_id) is not None
 
-    return member.voice
+
+def reconcile_voice_sessions(guild: Optional[discord.Guild], now: float, stats: Optional[dict] = None) -> bool:
+    """Flush stale sessions for users who are no longer in countable voice."""
+    changed = False
+
+    for user_id in list(active_voice_sessions.keys()):
+        if guild is None:
+            if flush_voice_session(user_id, now, stats) > 0:
+                changed = True
+            continue
+
+        member = get_member_in_voice(guild, user_id)
+        if member is None or not is_voice_countable(member.voice):
+            if flush_voice_session(user_id, now, stats) > 0:
+                changed = True
+
+    return changed
 
 
 def credit_voice_time(stats: dict, user_id: int, duration: float) -> dict:
@@ -379,13 +395,15 @@ async def commit_voice_stats():
         return
 
     now = time.time()
+    guild = CLIENT_REF.get_guild(GUILD_ID) if CLIENT_REF and GUILD_ID else None
+
     with _stats_lock:
         stats = load_stats()
-        changed = False
+        changed = reconcile_voice_sessions(guild, now, stats)
 
         for user_id, start_time in list(active_voice_sessions.items()):
-            voice_state = get_member_voice_state(user_id)
-            if voice_state is None or not is_voice_countable(voice_state):
+            member = get_member_in_voice(guild, user_id) if guild else None
+            if member is None or not is_voice_countable(member.voice):
                 if flush_voice_session(user_id, now, stats) > 0:
                     changed = True
                 continue
@@ -419,8 +437,17 @@ async def setup_fun_commands(client: discord.Client, tree: app_commands.CommandT
         update_message_count(message.author.id)
 
     async def listener_on_voice_state_update(member: discord.Member, before: discord.VoiceState, after: discord.VoiceState):
+        if member.bot or member.guild is None or member.guild.id != guild_id:
+            return
+
         now = time.time()
+        apply_voice_session(member, now)
+
+        seen_ids = {member.id}
         for affected in iter_affected_voice_members(before, after):
+            if affected.id in seen_ids:
+                continue
+            seen_ids.add(affected.id)
             apply_voice_session(affected, now)
 
     # Rejestracja listenerów
@@ -445,6 +472,14 @@ async def setup_fun_commands(client: discord.Client, tree: app_commands.CommandT
     # --- Komendy ---
     @tree.command(name="ranking", description="Wyświetla ranking aktywności serwera", guild=guild_obj)
     async def ranking(interaction: discord.Interaction):
+        now = time.time()
+        guild = interaction.guild or client.get_guild(guild_id)
+
+        with _stats_lock:
+            stats = load_stats()
+            if reconcile_voice_sessions(guild, now, stats):
+                save_stats(stats)
+
         stats = load_stats()
 
         all_user_ids = set(stats.keys())
