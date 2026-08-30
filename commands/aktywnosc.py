@@ -49,6 +49,9 @@ LEVEL_COLORS = (
 )
 LEVEL_LABELS = ("—", "5m", "30m", "1h", "3h", "5h")
 
+ETAT_THRESHOLD = 8 * 60 * 60  # ≥ 8 h
+COLOR_ETAT = (240, 193, 75, 255)
+
 WEEKDAY_LABELS = ["Pn", "Wt", "Śr", "Cz", "Pt", "So", "Nd"]
 MONTHS_SHORT = ["", "Sty", "Lut", "Mar", "Kwi", "Maj", "Cze", "Lip", "Sie", "Wrz", "Paź", "Lis", "Gru"]
 MONTHS_GENITIVE = {
@@ -211,6 +214,8 @@ def activity_level(seconds: float) -> int:
 
 
 def color_for_seconds(seconds: float) -> tuple:
+    if seconds >= ETAT_THRESHOLD:
+        return COLOR_ETAT
     return LEVEL_COLORS[activity_level(seconds)]
 
 
@@ -380,8 +385,8 @@ def build_heatmap_image(stats: dict) -> io.BytesIO:
 
     legend_y = origin_y + grid_h + 16 * scale
     font_legend_small = _load_font(11 * scale)
-    less_label = "Mniej"
-    more_label = "Więcej"
+    less_label = ""
+    more_label = ""
     less_w, less_h = _text_size(draw, less_label, font_legend)
     sq = 16 * scale
     legend_pitch = 40 * scale
@@ -406,8 +411,24 @@ def build_heatmap_image(stats: dict) -> io.BytesIO:
             font=font_legend_small,
         )
 
+    etat_gap = 16 * scale
+    etat_x = squares_x + squares_w + etat_gap
+    etat_box = (etat_x, legend_y, etat_x + sq, legend_y + sq)
+    try:
+        draw.rounded_rectangle(etat_box, radius=4 * scale, fill=COLOR_ETAT)
+    except Exception:
+        draw.rectangle(etat_box, fill=COLOR_ETAT)
+    etat_label = "etat"
+    etat_tw, _ = _text_size(draw, etat_label, font_legend_small)
     draw.text(
-        (squares_x + squares_w + 12 * scale, legend_y + (sq - less_h) // 2),
+        (etat_x + (sq - etat_tw) // 2, legend_y + sq + 4 * scale),
+        etat_label,
+        fill=COLOR_LABEL,
+        font=font_legend_small,
+    )
+
+    draw.text(
+        (etat_x + sq + 12 * scale, legend_y + (sq - less_h) // 2),
         more_label,
         fill=COLOR_LABEL,
         font=font_legend,
