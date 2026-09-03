@@ -371,7 +371,8 @@ def build_ranking_image(
     col_w = 430 * scale
     width = pad * 2 + col_w * 2 + col_gap
     rows_h = RANKING_TOP_N * row_h + (RANKING_TOP_N - 1) * row_gap
-    footer_block = footer_h + 14 * scale if (has_voice_footer or has_msg_footer) else 0
+    footer_gap = 12 * scale
+    footer_block = footer_h + footer_gap if (has_voice_footer or has_msg_footer) else 0
     height = pad + title_h + gap + header_h + rows_h + 16 * scale + footer_block + pad
 
     img = Image.new("RGBA", (width, height), COLOR_BG)
@@ -401,7 +402,6 @@ def build_ranking_image(
             "data": voice_data[:RANKING_TOP_N],
             "format_value": lambda v: format_duration(v),
             "footer": show_voice_footer if has_voice_footer else None,
-            "footer_value": (lambda rank, val: f"#{rank} · {format_duration(val)}"),
         },
         {
             "x": pad + col_w + col_gap,
@@ -412,7 +412,6 @@ def build_ranking_image(
             "data": msg_data[:RANKING_TOP_N],
             "format_value": lambda v: f"{int(v):,}".replace(",", " "),
             "footer": show_msg_footer if has_msg_footer else None,
-            "footer_value": (lambda rank, val: f"#{rank} · {int(val)} {wiadomosci_label(int(val))}"),
         },
     ]
 
@@ -491,9 +490,9 @@ def build_ranking_image(
 
         if col["footer"]:
             rank, val = col["footer"]
-            footer_y = panel_bottom + 10 * scale
+            footer_y = panel_bottom + footer_gap
             footer_box = (x, footer_y, x + col_w, footer_y + footer_h)
-            _draw_rounded_rect(draw, footer_box, radius=10 * scale, fill=(38, 40, 44, 255))
+            _draw_rounded_rect(draw, footer_box, radius=10 * scale, fill=COLOR_ROW_SELF)
             _draw_rounded_rect(
                 draw,
                 footer_box,
@@ -502,19 +501,39 @@ def build_ranking_image(
                 width=max(1, scale),
             )
 
+            badge_cx = x + 28 * scale
+            badge_cy = footer_y + footer_h // 2
+            # mini badge z miejscem (bez złota/srebra — to pozycja poza topką)
+            br = 13 * scale
+            draw.ellipse(
+                (badge_cx - br, badge_cy - br, badge_cx + br, badge_cy + br),
+                fill=COLOR_BAR_TRACK,
+                outline=COLOR_SELF,
+                width=max(1, scale),
+            )
+            rank_label = str(rank)
+            left, top, right, bottom = draw.textbbox((0, 0), rank_label, font=font_badge)
+            draw.text(
+                (badge_cx - (left + right) // 2, badge_cy - (top + bottom) // 2),
+                rank_label,
+                fill=COLOR_SELF,
+                font=font_badge,
+            )
+
             name = _truncate_to_width(
                 draw,
                 _resolve_display_name(guild, current_user_id),
                 font_footer,
-                col_w // 3,
+                col_w // 2,
             )
-            footer_text = f"Ty · {name}  {col['footer_value'](rank, val)}"
+            value_str = col["format_value"](val)
+            draw.text((x + 50 * scale, badge_cy), name, fill=COLOR_SELF, font=font_footer, anchor="lm")
             draw.text(
-                (x + col_w // 2, footer_y + footer_h // 2),
-                footer_text,
+                (x + col_w - 18 * scale, badge_cy),
+                value_str,
                 fill=COLOR_SELF,
                 font=font_footer,
-                anchor="mm",
+                anchor="rm",
             )
 
     if scale > 1:
