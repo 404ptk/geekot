@@ -13,6 +13,8 @@ from PIL import Image, ImageDraw, ImageFont
 
 STATS_FILE = "txt/server_stats.json"
 IGNORED_CHANNEL_ID = 710042604720488520
+VOICE_EXEMPT_USER_ID = 391289282125365248
+VOICE_EXEMPT_PAIR_USER_ID = 1309165290868965507
 active_voice_sessions = {}
 RANKING_TOP_N = 5
 _stats_lock = threading.Lock()
@@ -54,11 +56,23 @@ def active_humans_in_channel(channel) -> int:
     return sum(1 for member in channel.members if not member.bot)
 
 
-def is_voice_countable(state: Optional[discord.VoiceState]) -> bool:
+def is_exempt_voice_pair(channel, user_id: int) -> bool:
+    """Czas obu użytkowników nie liczy się, gdy na kanale są tylko VOICE_EXEMPT_USER_ID i VOICE_EXEMPT_PAIR_USER_ID."""
+    if channel is None or user_id not in (VOICE_EXEMPT_USER_ID, VOICE_EXEMPT_PAIR_USER_ID):
+        return False
+    human_ids = {member.id for member in channel.members if not member.bot}
+    return human_ids == {VOICE_EXEMPT_USER_ID, VOICE_EXEMPT_PAIR_USER_ID}
+
+
+def is_voice_countable(state: Optional[discord.VoiceState], user_id: Optional[int] = None) -> bool:
     """Voice time counts only when unmuted and not alone on the channel."""
     if not is_voice_active(state):
         return False
-    return active_humans_in_channel(state.channel) >= 2
+    if active_humans_in_channel(state.channel) < 2:
+        return False
+    if user_id is not None and is_exempt_voice_pair(state.channel, user_id):
+        return False
+    return True
 
 
 def iter_affected_voice_members(before: discord.VoiceState, after: discord.VoiceState):
@@ -96,7 +110,7 @@ def reconcile_voice_sessions(guild: Optional[discord.Guild], now: float, stats: 
             continue
 
         member = get_member_in_voice(guild, user_id)
-        if member is None or not is_voice_countable(member.voice):
+        if member is None or not is_voice_countable(member.voice, user_id):
             if flush_voice_session(user_id, now, stats) > 0:
                 changed = True
 
@@ -134,7 +148,7 @@ def flush_voice_session(user_id: int, now: float, stats: Optional[dict] = None) 
 
 def apply_voice_session(member: discord.Member, now: float) -> None:
     user_id = member.id
-    should_count = is_voice_countable(member.voice)
+    should_count = is_voice_countable(member.voice, member.id)
 
     if should_count:
         if user_id not in active_voice_sessions:
@@ -403,7 +417,7 @@ async def commit_voice_stats():
 
         for user_id, start_time in list(active_voice_sessions.items()):
             member = get_member_in_voice(guild, user_id) if guild else None
-            if member is None or not is_voice_countable(member.voice):
+            if member is None or not is_voice_countable(member.voice, user_id):
                 if flush_voice_session(user_id, now, stats) > 0:
                     changed = True
                 continue

@@ -176,7 +176,7 @@ def reconcile_daily_voice_sessions(guild: Optional[discord.Guild], now: float, d
             continue
 
         member = get_member_in_voice(guild, user_id)
-        if member is None or not is_voice_countable(member.voice):
+        if member is None or not is_voice_countable(member.voice, user_id):
             if flush_daily_voice_session(user_id, now, data) > 0:
                 changed = True
 
@@ -511,7 +511,7 @@ async def commit_daily_voice():
 
         for user_id, start_ts in list(active_voice_sessions.items()):
             member = get_member_in_voice(guild, user_id) if guild else None
-            if member is None or not is_voice_countable(member.voice):
+            if member is None or not is_voice_countable(member.voice, user_id):
                 if flush_daily_voice_session(user_id, now, data) > 0:
                     changed = True
                 continue
@@ -527,7 +527,7 @@ async def commit_daily_voice():
 
 def apply_daily_voice_session(member: discord.Member, now: float) -> None:
     user_id = member.id
-    should_count = is_voice_countable(member.voice)
+    should_count = is_voice_countable(member.voice, member.id)
 
     if should_count:
         if user_id not in active_voice_sessions:
