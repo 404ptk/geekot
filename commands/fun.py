@@ -25,19 +25,23 @@ GUILD_ID: Optional[int] = None
 # Discord embed background (#2b2d31) — spójnie z /aktywnosc
 COLOR_BG = (43, 45, 49, 255)
 COLOR_PANEL = (49, 51, 56, 255)
-COLOR_ROW = (58, 61, 68, 255)
-COLOR_ROW_ALT = (52, 55, 60, 255)
-COLOR_HEADER = (72, 76, 84, 255)
+COLOR_ROW = (56, 59, 66, 255)
+COLOR_ROW_SELF = (46, 62, 52, 255)
+COLOR_BAR_TRACK = (58, 61, 68, 255)
 COLOR_LABEL = (168, 174, 182, 255)
 COLOR_TEXT = (230, 232, 235, 255)
 COLOR_MUTED = (130, 136, 144, 255)
 COLOR_ACCENT_VOICE = (88, 166, 255, 255)
+COLOR_ACCENT_VOICE_DIM = (56, 104, 160, 255)
 COLOR_ACCENT_MSG = (163, 113, 247, 255)
+COLOR_ACCENT_MSG_DIM = (102, 72, 156, 255)
 COLOR_GOLD = (255, 200, 87, 255)
+COLOR_GOLD_DIM = (120, 92, 36, 255)
 COLOR_SILVER = (192, 202, 216, 255)
+COLOR_SILVER_DIM = (78, 84, 94, 255)
 COLOR_BRONZE = (205, 127, 50, 255)
+COLOR_BRONZE_DIM = (102, 64, 28, 255)
 COLOR_SELF = (57, 211, 83, 255)
-COLOR_SELF_TOP = (255, 152, 64, 255)
 
 def is_voice_active(state: Optional[discord.VoiceState]) -> bool:
     """Checks if the user's voice time should be counted."""
@@ -210,15 +214,38 @@ def wiadomosci_label(count: int) -> str:
     return "wiadomość" if count == 1 else "wiadomości"
 
 
-def _load_font(size: int) -> ImageFont.ImageFont:
-    candidates = [
-        os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "images", "font", "roboto", "Roboto-Medium.ttf")),
-        os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "images", "font", "roboto", "Roboto-Regular.ttf")),
+def _load_font(size: int, *, weight: str = "regular") -> ImageFont.ImageFont:
+    """weight: regular | medium | semibold | bold"""
+    base = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "images", "font"))
+    weight = weight.lower()
+    inter_map = {
+        "bold": "Inter-Bold.ttf",
+        "semibold": "Inter-SemiBold.ttf",
+        "medium": "Inter-Medium.ttf",
+        "regular": "Inter-Regular.ttf",
+    }
+    roboto_map = {
+        "bold": "Roboto-Bold.ttf",
+        "semibold": "Roboto-Medium.ttf",
+        "medium": "Roboto-Medium.ttf",
+        "regular": "Roboto-Regular.ttf",
+    }
+    preferred = [
+        os.path.join(base, "inter", inter_map.get(weight, "Inter-Regular.ttf")),
+        os.path.join(base, "inter", "Inter-SemiBold.ttf"),
+        os.path.join(base, "inter", "Inter-Medium.ttf"),
+        os.path.join(base, "inter", "Inter-Regular.ttf"),
+        os.path.join(base, "roboto", roboto_map.get(weight, "Roboto-Regular.ttf")),
+        os.path.join(base, "roboto", "Roboto-Medium.ttf"),
+        os.path.join(base, "roboto", "Roboto-Regular.ttf"),
+        r"C:\Windows\Fonts\segoeuib.ttf" if weight in ("bold", "semibold") else r"C:\Windows\Fonts\segoeui.ttf",
         r"C:\Windows\Fonts\segoeui.ttf",
-        r"C:\Windows\Fonts\arial.ttf",
+        r"C:\Windows\Fonts\calibrib.ttf" if weight in ("bold", "semibold") else r"C:\Windows\Fonts\calibri.ttf",
+        r"C:\Windows\Fonts\arialbd.ttf" if weight in ("bold", "semibold") else r"C:\Windows\Fonts\arial.ttf",
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf" if weight in ("bold", "semibold") else "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
         "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
     ]
-    for path in candidates:
+    for path in preferred:
         if os.path.isfile(path):
             try:
                 return ImageFont.truetype(path, size)
@@ -243,14 +270,14 @@ def _truncate_to_width(draw: ImageDraw.ImageDraw, text: str, font: ImageFont.Ima
     return trimmed + "…"
 
 
-def _rank_color(place: int) -> tuple:
+def _rank_badge_colors(place: int) -> Tuple[tuple, tuple]:
     if place == 1:
-        return COLOR_GOLD
+        return COLOR_GOLD, COLOR_GOLD_DIM
     if place == 2:
-        return COLOR_SILVER
+        return COLOR_SILVER, COLOR_SILVER_DIM
     if place == 3:
-        return COLOR_BRONZE
-    return COLOR_LABEL
+        return COLOR_BRONZE, COLOR_BRONZE_DIM
+    return COLOR_LABEL, COLOR_BAR_TRACK
 
 
 def _resolve_display_name(guild: Optional[discord.Guild], uid_str: str) -> str:
@@ -267,6 +294,56 @@ def _find_user_rank(data: List[Tuple[str, float]], user_id: str) -> Optional[Tup
     return None
 
 
+def _draw_rounded_rect(draw: ImageDraw.ImageDraw, box, radius: int, fill=None, outline=None, width: int = 1):
+    try:
+        draw.rounded_rectangle(box, radius=radius, fill=fill, outline=outline, width=width)
+    except Exception:
+        draw.rectangle(box, fill=fill, outline=outline, width=width)
+
+
+def _draw_rank_badge(
+    draw: ImageDraw.ImageDraw,
+    cx: int,
+    cy: int,
+    place: int,
+    font: ImageFont.ImageFont,
+    scale: int,
+) -> None:
+    r = 15 * scale
+    fg, bg = _rank_badge_colors(place)
+    box = (cx - r, cy - r, cx + r, cy + r)
+    if place <= 3:
+        draw.ellipse(box, fill=bg, outline=fg, width=max(2, scale))
+        label_color = fg
+    else:
+        draw.ellipse(box, fill=bg)
+        label_color = COLOR_MUTED
+
+    label = str(place)
+    # wyśrodkuj po realnym atramentu glifu, nie po bounding boxie fontu
+    left, top, right, bottom = draw.textbbox((0, 0), label, font=font)
+    x = cx - (left + right) // 2
+    y = cy - (top + bottom) // 2
+    draw.text((x, y), label, fill=label_color, font=font)
+
+
+def _draw_progress_bar(
+    draw: ImageDraw.ImageDraw,
+    x: int,
+    y: int,
+    width: int,
+    height: int,
+    ratio: float,
+    fill: tuple,
+    scale: int,
+) -> None:
+    ratio = max(0.0, min(1.0, ratio))
+    _draw_rounded_rect(draw, (x, y, x + width, y + height), radius=height // 2, fill=COLOR_BAR_TRACK)
+    fill_w = max(height if ratio > 0 else 0, int(width * ratio))
+    if fill_w > 0:
+        _draw_rounded_rect(draw, (x, y, x + fill_w, y + height), radius=height // 2, fill=fill)
+
+
 def build_ranking_image(
     voice_data: List[Tuple[str, float]],
     msg_data: List[Tuple[str, int]],
@@ -274,16 +351,15 @@ def build_ranking_image(
     current_user_id: str,
 ) -> io.BytesIO:
     scale = 2
-    pad = 24 * scale
+    pad = 28 * scale
     gap = 16 * scale
-    col_gap = 20 * scale
-    title_h = 52 * scale
-    title_row_h = 34 * scale
-    cols_header_h = 28 * scale
-    header_h = title_row_h + cols_header_h
-    row_h = 46 * scale
-    footer_h = 52 * scale
-    radius = 10 * scale
+    col_gap = 18 * scale
+    title_h = 64 * scale
+    header_h = 42 * scale
+    row_h = 48 * scale
+    row_gap = 8 * scale
+    footer_h = 44 * scale
+    radius = 14 * scale
 
     show_voice_footer = _find_user_rank(voice_data, current_user_id)
     show_msg_footer = _find_user_rank(msg_data, current_user_id)
@@ -292,24 +368,27 @@ def build_ranking_image(
     has_voice_footer = show_voice_footer is not None and not in_voice_top
     has_msg_footer = show_msg_footer is not None and not in_msg_top
 
-    col_w = 420 * scale
+    col_w = 430 * scale
     width = pad * 2 + col_w * 2 + col_gap
-    rows_h = RANKING_TOP_N * row_h
-    footer_block = footer_h + 12 * scale if (has_voice_footer or has_msg_footer) else 0
-    height = pad + title_h + gap + header_h + rows_h + footer_block + pad
+    rows_h = RANKING_TOP_N * row_h + (RANKING_TOP_N - 1) * row_gap
+    footer_block = footer_h + 14 * scale if (has_voice_footer or has_msg_footer) else 0
+    height = pad + title_h + gap + header_h + rows_h + 16 * scale + footer_block + pad
 
     img = Image.new("RGBA", (width, height), COLOR_BG)
     draw = ImageDraw.Draw(img)
 
-    font_title = _load_font(22 * scale)
-    font_header = _load_font(13 * scale)
-    font_row = _load_font(15 * scale)
-    font_value = _load_font(14 * scale)
-    font_footer = _load_font(13 * scale)
+    font_title = _load_font(30 * scale, weight="bold")
+    font_sub = _load_font(12 * scale, weight="medium")
+    font_header = _load_font(14 * scale, weight="semibold")
+    font_badge = _load_font(13 * scale, weight="bold")
+    font_row = _load_font(15 * scale, weight="semibold")
+    font_value = _load_font(14 * scale, weight="semibold")
+    font_footer = _load_font(13 * scale, weight="semibold")
 
-    title = "Ranking aktywności serwera"
-    tw, th = _text_size(draw, title, font_title)
-    draw.text(((width - tw) // 2, pad), title, fill=COLOR_TEXT, font=font_title)
+    title = "Ranking aktywności"
+    draw.text((width // 2, pad + 4 * scale), title, fill=COLOR_TEXT, font=font_title, anchor="ma")
+    subtitle = "top 5 · voice i wiadomości"
+    draw.text((width // 2, pad + 40 * scale), subtitle, fill=COLOR_MUTED, font=font_sub, anchor="ma")
 
     content_y = pad + title_h + gap
     columns = [
@@ -317,84 +396,126 @@ def build_ranking_image(
             "x": pad,
             "title": "Kanał głosowy",
             "accent": COLOR_ACCENT_VOICE,
-            "value_header": "Czas",
+            "bar": COLOR_ACCENT_VOICE,
+            "bar_dim": COLOR_ACCENT_VOICE_DIM,
             "data": voice_data[:RANKING_TOP_N],
             "format_value": lambda v: format_duration(v),
             "footer": show_voice_footer if has_voice_footer else None,
-            "footer_format": lambda rank, val: f"#{rank}  {_truncate_to_width(draw, _resolve_display_name(guild, current_user_id), font_footer, col_w // 2)}  ·  {format_duration(val)}",
+            "footer_value": (lambda rank, val: f"#{rank} · {format_duration(val)}"),
         },
         {
             "x": pad + col_w + col_gap,
             "title": "Wiadomości",
             "accent": COLOR_ACCENT_MSG,
-            "value_header": "Liczba",
+            "bar": COLOR_ACCENT_MSG,
+            "bar_dim": COLOR_ACCENT_MSG_DIM,
             "data": msg_data[:RANKING_TOP_N],
-            "format_value": lambda v: str(int(v)),
+            "format_value": lambda v: f"{int(v):,}".replace(",", " "),
             "footer": show_msg_footer if has_msg_footer else None,
-            "footer_format": lambda rank, val: f"#{rank}  {_truncate_to_width(draw, _resolve_display_name(guild, current_user_id), font_footer, col_w // 2)}  ·  {int(val)} {wiadomosci_label(int(val))}",
+            "footer_value": (lambda rank, val: f"#{rank} · {int(val)} {wiadomosci_label(int(val))}"),
         },
     ]
 
     for col in columns:
         x = col["x"]
-        panel = (x, content_y, x + col_w, content_y + header_h + rows_h)
-        try:
-            draw.rounded_rectangle(panel, radius=radius, fill=COLOR_PANEL)
-        except Exception:
-            draw.rectangle(panel, fill=COLOR_PANEL)
+        panel_bottom = content_y + header_h + rows_h + 16 * scale
+        _draw_rounded_rect(draw, (x, content_y, x + col_w, panel_bottom), radius=radius, fill=COLOR_PANEL)
 
-        accent_bar = (x, content_y, x + 4 * scale, content_y + header_h + rows_h)
-        draw.rectangle(accent_bar, fill=col["accent"])
-
-        draw.text((x + 16 * scale, content_y + 10 * scale), col["title"], fill=col["accent"], font=font_header)
-
-        header_y = content_y + title_row_h + 6 * scale
-        draw.text((x + 16 * scale, header_y), "#", fill=COLOR_MUTED, font=font_header)
-        draw.text((x + 52 * scale, header_y), "Użytkownik", fill=COLOR_MUTED, font=font_header)
-        value_w, _ = _text_size(draw, col["value_header"], font_header)
-        draw.text((x + col_w - value_w - 16 * scale, header_y), col["value_header"], fill=COLOR_MUTED, font=font_header)
-
-        draw.line(
-            (x + 12 * scale, content_y + header_h - 4 * scale, x + col_w - 12 * scale, content_y + header_h - 4 * scale),
-            fill=COLOR_HEADER,
-            width=max(1, scale),
+        # accent pill + title
+        pill_y = content_y + 14 * scale
+        _draw_rounded_rect(
+            draw,
+            (x + 16 * scale, pill_y + 4 * scale, x + 28 * scale, pill_y + 16 * scale),
+            radius=6 * scale,
+            fill=col["accent"],
         )
+        draw.text((x + 36 * scale, pill_y), col["title"], fill=COLOR_TEXT, font=font_header)
+
+        leader = col["data"][0][1] if col["data"] else 0
+        rows_top = content_y + header_h
 
         for idx in range(RANKING_TOP_N):
-            row_y = content_y + header_h + idx * row_h
-            row_fill = COLOR_ROW if idx % 2 == 0 else COLOR_ROW_ALT
-            draw.rectangle((x + 8 * scale, row_y, x + col_w - 8 * scale, row_y + row_h), fill=row_fill)
+            row_y = rows_top + idx * (row_h + row_gap)
+            row_box = (x + 12 * scale, row_y, x + col_w - 12 * scale, row_y + row_h)
 
-            if idx < len(col["data"]):
-                uid, value = col["data"][idx]
-                place = idx + 1
-                name = _resolve_display_name(guild, uid)
-                value_str = col["format_value"](value)
+            if idx >= len(col["data"]):
+                _draw_rounded_rect(draw, row_box, radius=10 * scale, fill=COLOR_BAR_TRACK)
+                draw.text((x + 58 * scale, row_y + row_h // 2), "—", fill=COLOR_MUTED, font=font_row, anchor="lm")
+                continue
 
-                draw.text((x + 16 * scale, row_y + 14 * scale), str(place), fill=_rank_color(place), font=font_row)
+            uid, value = col["data"][idx]
+            place = idx + 1
+            is_self = uid == current_user_id
+            name = _resolve_display_name(guild, uid)
+            value_str = col["format_value"](value)
+            ratio = (float(value) / float(leader)) if leader else 0.0
 
-                name_max_w = col_w - 52 * scale - 100 * scale
-                name_draw = _truncate_to_width(draw, name, font_row, name_max_w)
-                name_color = COLOR_SELF_TOP if uid == current_user_id else COLOR_TEXT
-                draw.text((x + 52 * scale, row_y + 14 * scale), name_draw, fill=name_color, font=font_row)
+            row_fill = COLOR_ROW_SELF if is_self else COLOR_ROW
+            _draw_rounded_rect(draw, row_box, radius=10 * scale, fill=row_fill)
+            if is_self:
+                _draw_rounded_rect(
+                    draw,
+                    row_box,
+                    radius=10 * scale,
+                    outline=COLOR_SELF,
+                    width=max(1, scale),
+                )
 
-                vw, _ = _text_size(draw, value_str, font_value)
-                draw.text((x + col_w - vw - 16 * scale, row_y + 15 * scale), value_str, fill=COLOR_LABEL, font=font_value)
-            else:
-                draw.text((x + 52 * scale, row_y + 14 * scale), "—", fill=COLOR_MUTED, font=font_row)
+            badge_cx = x + 34 * scale
+            badge_cy = row_y + row_h // 2
+            _draw_rank_badge(draw, badge_cx, badge_cy, place, font_badge, scale)
+
+            name_x = x + 56 * scale
+            value_w, _ = _text_size(draw, value_str, font_value)
+            name_max_w = col_w - 56 * scale - value_w - 40 * scale
+            name_draw = _truncate_to_width(draw, name, font_row, name_max_w)
+            name_color = COLOR_SELF if is_self else COLOR_TEXT
+
+            text_y = row_y + 8 * scale
+            draw.text((name_x, text_y), name_draw, fill=name_color, font=font_row)
+            draw.text(
+                (x + col_w - 24 * scale, text_y),
+                value_str,
+                fill=COLOR_LABEL,
+                font=font_value,
+                anchor="ra",
+            )
+
+            bar_x = name_x
+            bar_y = text_y + 23 * scale
+            bar_w = col_w - 56 * scale - 36 * scale
+            bar_fill = col["bar"] if place == 1 else col["bar_dim"]
+            if is_self and place > 1:
+                bar_fill = COLOR_SELF
+            _draw_progress_bar(draw, bar_x, bar_y, bar_w, 6 * scale, ratio, bar_fill, scale)
 
         if col["footer"]:
             rank, val = col["footer"]
-            footer_y = content_y + header_h + rows_h + 8 * scale
+            footer_y = panel_bottom + 10 * scale
             footer_box = (x, footer_y, x + col_w, footer_y + footer_h)
-            try:
-                draw.rounded_rectangle(footer_box, radius=8 * scale, fill=(38, 40, 44, 255))
-            except Exception:
-                draw.rectangle(footer_box, fill=(38, 40, 44, 255))
+            _draw_rounded_rect(draw, footer_box, radius=10 * scale, fill=(38, 40, 44, 255))
+            _draw_rounded_rect(
+                draw,
+                footer_box,
+                radius=10 * scale,
+                outline=COLOR_SELF,
+                width=max(1, scale),
+            )
 
-            footer_text = col["footer_format"](rank, val)
-            fw, fh = _text_size(draw, footer_text, font_footer)
-            draw.text((x + (col_w - fw) // 2, footer_y + (footer_h - fh) // 2), footer_text, fill=COLOR_SELF, font=font_footer)
+            name = _truncate_to_width(
+                draw,
+                _resolve_display_name(guild, current_user_id),
+                font_footer,
+                col_w // 3,
+            )
+            footer_text = f"Ty · {name}  {col['footer_value'](rank, val)}"
+            draw.text(
+                (x + col_w // 2, footer_y + footer_h // 2),
+                footer_text,
+                fill=COLOR_SELF,
+                font=font_footer,
+                anchor="mm",
+            )
 
     if scale > 1:
         img = img.resize((width // scale, height // scale), Image.Resampling.LANCZOS)
