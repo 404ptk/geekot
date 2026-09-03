@@ -1,3 +1,4 @@
+import asyncio
 import discord
 from discord import app_commands
 from discord.ext import tasks
@@ -486,6 +487,8 @@ async def setup_fun_commands(client: discord.Client, tree: app_commands.CommandT
     # --- Komendy ---
     @tree.command(name="ranking", description="Wyświetla ranking aktywności serwera", guild=guild_obj)
     async def ranking(interaction: discord.Interaction):
+        await interaction.response.defer()
+
         now = time.time()
         guild = interaction.guild or client.get_guild(guild_id)
 
@@ -501,7 +504,7 @@ async def setup_fun_commands(client: discord.Client, tree: app_commands.CommandT
             all_user_ids.add(str(uid))
 
         if not all_user_ids:
-            await interaction.response.send_message("Brak danych w rankingu.", ephemeral=True)
+            await interaction.followup.send("Brak danych w rankingu.", ephemeral=True)
             return
 
         voice_data = []
@@ -524,24 +527,30 @@ async def setup_fun_commands(client: discord.Client, tree: app_commands.CommandT
         msg_data.sort(key=lambda x: x[1], reverse=True)
 
         if not voice_data and not msg_data:
-            await interaction.response.send_message("Brak danych w rankingu.", ephemeral=True)
+            await interaction.followup.send("Brak danych w rankingu.", ephemeral=True)
             return
 
         try:
-            buffer = build_ranking_image(
+            buffer = await asyncio.to_thread(
+                build_ranking_image,
                 voice_data,
                 msg_data,
                 interaction.guild,
                 str(interaction.user.id),
             )
             file = discord.File(fp=buffer, filename="ranking.png")
-            await interaction.response.send_message(file=file)
+            await interaction.followup.send(file=file)
+        except discord.NotFound:
+            logging.warning("Ranking interaction expired before the reply could be sent.")
         except Exception as exc:
             logging.error(f"Failed to generate ranking image: {exc}")
-            await interaction.response.send_message(
-                f"Nie udało się wygenerować rankingu: {exc}",
-                ephemeral=True,
-            )
+            try:
+                await interaction.followup.send(
+                    f"Nie udało się wygenerować rankingu: {exc}",
+                    ephemeral=True,
+                )
+            except discord.NotFound:
+                logging.warning("Ranking interaction expired before the reply could be sent.")
     
     @tree.command(name="avatar", description="Wyświetla avatar użytkownika", guild=guild_obj)
     @app_commands.describe(user="Użytkownik, którego avatar chcesz zobaczyć (opcjonalnie)")

@@ -1,3 +1,4 @@
+import asyncio
 import io
 import json
 import os
@@ -587,19 +588,21 @@ async def setup_aktywnosc_commands(client: discord.Client, tree: app_commands.Co
     )
     @app_commands.describe(nick="Użytkownik (puste = Twoja aktywność)")
     async def aktywnosc(interaction: discord.Interaction, nick: Optional[discord.Member] = None):
+        await interaction.response.defer()
+
         target = nick or interaction.user
         if not isinstance(target, discord.Member):
             guild = interaction.guild or client.get_guild(guild_id)
             target = guild.get_member(target.id) if guild else None
             if target is None:
-                await interaction.response.send_message(
+                await interaction.followup.send(
                     "Nie znaleziono tego użytkownika na serwerze.",
                     ephemeral=True,
                 )
                 return
 
         if target.bot:
-            await interaction.response.send_message("Boty nie są śledzone.", ephemeral=True)
+            await interaction.followup.send("Boty nie są śledzone.", ephemeral=True)
             return
 
         now = time.time()
@@ -613,11 +616,16 @@ async def setup_aktywnosc_commands(client: discord.Client, tree: app_commands.Co
         embed = build_embed(target, stats)
 
         try:
-            buffer = build_heatmap_image(stats)
+            buffer = await asyncio.to_thread(build_heatmap_image, stats)
             file = discord.File(fp=buffer, filename="aktywnosc.png")
             embed.set_image(url="attachment://aktywnosc.png")
-            await interaction.response.send_message(embed=embed, file=file)
+            await interaction.followup.send(embed=embed, file=file)
+        except discord.NotFound:
+            print("[aktywnosc] Interakcja wygasła zanim zdążyła wyjść odpowiedź.")
         except Exception as exc:
             print(f"[aktywnosc] Nie udało się wygenerować heatmapy: {exc}")
             embed.description = f"{embed.description}\n\n{build_emoji_grid(stats)}"
-            await interaction.response.send_message(embed=embed)
+            try:
+                await interaction.followup.send(embed=embed)
+            except discord.NotFound:
+                print("[aktywnosc] Interakcja wygasła zanim zdążyła wyjść odpowiedź.")
