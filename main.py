@@ -438,6 +438,29 @@ async def on_message(message):
 
         await message.channel.send(embed=embed)
 
+    if message.content.startswith('!live'):
+        if message.author.id != 443406275716579348:
+            await message.channel.send("❌ Nie masz uprawnień do tej komendy.", delete_after=5)
+            return
+
+        status = await message.channel.send("Generuję FACEIT LIVE…")
+        try:
+            import asyncio
+            from faceit.live import build_faceit_live_image
+
+            buffer = await asyncio.to_thread(build_faceit_live_image)
+            file = discord.File(fp=buffer, filename="faceit_live.png")
+            await message.channel.send(file=file)
+            try:
+                await status.delete()
+            except Exception:
+                pass
+        except Exception as e:
+            try:
+                await status.edit(content=f"❌ Błąd podczas generowania live: {e}")
+            except Exception:
+                await message.channel.send(f"❌ Błąd podczas generowania live: {e}")
+
     if message.content.startswith('!tygtest'):
         if message.author.id != 443406275716579348:
             await message.channel.send("❌ Nie masz uprawnień do tej komendy.", delete_after=5)
